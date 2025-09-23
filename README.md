@@ -1,4 +1,4 @@
-Code base for PhD research.
+Code base for PhD research. Calculations done on the JASMIN HPC.
 
 Relevant Publications:
 

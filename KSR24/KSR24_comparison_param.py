@@ -70,7 +70,7 @@ def DO98_UM75(a, vals):
         L - estimated downwelling longwave (W/m^2)'''
     a3 = a[3]/100    #Factor 100 correction to ensure all parameters have the same order of magnitude
     L_clr = a[0] + a[1]*(vals[0]/273.16)**6 + a[2]*np.sqrt(vals[2]/25)
-    L = (1-a3*vals[2])*L_clr + a3*vals[2]*sigma*vals[0]**4
+    L = (1-a3*vals[1])*L_clr + a3*vals[1]*sigma*vals[0]**4
     return L
 
 def C14(a, vals):
