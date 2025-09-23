@@ -53,7 +53,7 @@ def calc_Heff(tcwv, rho, ps, theta):
     return Heff
     
 
-def DO98_UM75(a, temp, cf, pw):
+def DO98_UM75(a, vals):
     '''Estimates the downwelling longwave given the parameters
     and temperature, cloud fraction and precipitable water.
     Implements the clear-sky parameterisation of Dilley and O'Brien (1998)
@@ -61,32 +61,34 @@ def DO98_UM75(a, temp, cf, pw):
     Unsworth and Monteith (1975) https://doi.org/10.1002/qj.49710142703
 
     Inputs:
-        temp - Near-surface air temperature (K): xarray dataarray
-        cf - Cloud fraction (0-1): xarray dataarray
-        pw - column precipitable water (kg/m^2): xarray dataarray
+        vals - list containing:
+            temp - Near-surface air temperature (K): xarray dataarray
+            cf - Cloud fraction (0-1): xarray dataarray
+            pw - column precipitable water (kg/m^2): xarray dataarray
         a - tuning parameters: floats
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
     a3 = a[3]/100    #Factor 100 correction to ensure all parameters have the same order of magnitude
-    L_clr = a[0] + a[1]*(temp/273.16)**6 + a[2]*np.sqrt(pw/25)
-    L = (1-a3*cf)*L_clr + a3*cf*sigma*temp**4
+    L_clr = a[0] + a[1]*(vals[0]/273.16)**6 + a[2]*np.sqrt(vals[2]/25)
+    L = (1-a3*vals[2])*L_clr + a3*vals[2]*sigma*vals[0]**4
     return L
 
-def C14(a, temp, RH, cf):
+def C14(a, vals):
     '''Estimates the downwelling longwave given the parameters
     and temperature, relative humidity and cloud fraction.
     Implements the method from Eq. 28 of Carmona et al. (2014)
     https://doi.org/10.1007/s00704-013-0891-3
 
     Inputs:
-        temp - Near-surface air temperature (K): xarray dataarray
-        RH - relative humidity (0-1):xarray dataarray
-        cf - Cloud fraction (0-1): xarray dataarray
-        a1 ~ a4 - tuning parameters: floats
+        vals - list containing:
+            temp - Near-surface air temperature (K): xarray dataarray
+            RH - relative humidity (0-1):xarray dataarray
+            cf - Cloud fraction (0-1): xarray dataarray
+        a - tuning parameters: floats
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
     a1 = a[1]/100 #Factor 100 correction to ensure all parameters have the same order of magnitude
-    L = (a[0] + a1*temp + a[2]*RH + a[3]*cf)* sigma * temp ** 4
+    L = (a[0] + a1*vals[0] + a[2]*vals[1] + a[3]*vals[2])* sigma * vals[0] ** 4
     return L
 
 def CN14(temp, vp, cf, a1 = -19.087, a2=66.064, a3=0.658, a4=3652, a5=0.249, a6=1.884):
@@ -229,8 +231,8 @@ def RMSE(est, true):
     return np.sqrt(MSE)
     
 
-def error_function(a, true_DLR, temp, cf, pw):
-    est = DO98_UM75(a, temp, cf, pw)
+def error_function(a, func, true_DLR, vals):
+    est = func(a, vals)
     return RMSE(est, true_DLR)
 
 def main():
@@ -247,14 +249,15 @@ def main():
     random.seed(10)
     #res = sp.optimize.least_squares(error_function, x0=(59.38, 113.7, 96.96, 0.84), xtol=1e-5,
     #                                args=(true_DLR, data['t2m'], data['tcc'], data['tcwv']))
-    #function_list = [DO98_UM75, C14]
-    #x0_list = [np.array([59.38, 113.7, 96.96, 84]),
-    #           np.array([-0.34, 0.336, 0.194, 0.213])]
-    #for func, x0 in zip(function_list, x0_list):
-
-    res = sp.optimize.basinhopping(error_function, x0=(59.38, 113.7, 96.96, 84), stepsize=5, niter_success=10, 
-                                    minimizer_kwargs={'args':(true_DLR, data['t2m'], data['tcc'], data['tcwv'])})
-    print(res.x)
+    function_dict = {DO98_UM75:[data['t2m'], data['tcc'], data['tcwv']], 
+                     C14:[data['t2m'], data['rh'], data['tcc']]}
+    x0_list = [np.array([59.38, 113.7, 96.96, 84]),
+               np.array([-0.34, 0.336, 0.194, 0.213])]
+    step_list = [5, 0.05]
+    for func, x0, step in zip(function_dict, x0_list, step_list):
+        res = sp.optimize.basinhopping(error_function, x0=x0, stepsize=step, niter_success=10, 
+                                       minimizer_kwargs={'args':(func, true_DLR, function_dict[func])})
+        print(res.x)
     return None
 
 main()
