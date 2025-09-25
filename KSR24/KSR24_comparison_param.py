@@ -106,11 +106,10 @@ def CN14(a, vals):
         L - estimated downwelling longwave (W/m^2)'''
     #adjust params (want inputs to be same order of magnitude for basin hopping)
     a2 = a[2] / 100
-    a3 = a[3] * 100
     a4 = a[4] / 100
     a5 = a[5] / 10
 
-    eps_clr = (1-a[0]*np.exp(-vals[0]/a[1])+a2*np.exp(-vals[1]/a3))
+    eps_clr = (1+a[0]*np.exp(-vals[0]/a[1])+a2*np.exp(-vals[1]/a[3]))
     L_clr = eps_clr * sigma * vals[0]**4
     L = L_clr * (1 + a4*vals[2]**a5)
     return L
@@ -158,8 +157,8 @@ def SR21(temp, dpt, tcwv, ps, theta=40.3, ppm = 400):
     Returns:
         L_clr - estimated clear-sky downwelling longwave (W/m^2)'''
     SR21_data = sp.io.loadmat("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/data.mat")
-    Heff_lookup = SR21_data['Heff']
-    q_lookup = SR21_data['q']
+    Heff_lookup = SR21_data['Heff'].flatten()
+    q_lookup = SR21_data['q'].flatten()
     tau_lookup = SR21_data['tau_eff_'+str(ppm)]
     
     q = calc_specific_humidity(ps, dpt)
@@ -174,9 +173,10 @@ def SR21(temp, dpt, tcwv, ps, theta=40.3, ppm = 400):
     Heff = calc_Heff(tcwv, rho, ps, theta)
 
     #Calculate the optical depth as a function of q and Heff
-    tau_interp = sp.interp.RegularGridInterpolator((q_lookup, Heff_lookup), tau_lookup)
+    tau_interp = sp.interpolate.RectBivariateSpline(q_lookup, Heff_lookup, tau_lookup)
+    tau_func = lambda x,y,z: tau_interp(x, y, grid=z)
 
-    tau = tau_interp(q, Heff)
+    tau = xr.apply_ufunc(tau_func, q, Heff, False, output_dtypes=[[float]])
 
     L_clr = sigma * temp**4 * (1 - np.exp(tau))
     return L_clr
@@ -282,7 +282,7 @@ def main():
     #Initial guesses (use values from the original papers)
     x0_list = [np.array([59.38, 113.7, 96.96, 84]),
                np.array([-0.34, 0.336, 0.194, 0.213]),
-               np.array([-19.087, 66.064, 65.8, 36.52, 24.9, 18.84]),
+               np.array([-19.087, 66.064, -65.8, 36.52, 24.9, 18.84]),
                np.array([-75.28, 82, 79, -212.59, 189, 106]),
                np.array([0.9385, -1.14, 2.326, 2.91]),
                np.array([0.5856, 0.525, 1.043, -1.72, 0.3061, -0.308])]
