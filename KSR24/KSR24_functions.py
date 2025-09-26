@@ -1,7 +1,6 @@
 import xarray as xr
 import scipy as sp
 import numpy as np
-import random
 
 #Stefan-Boltzmann constant as global variable
 sigma = 5.67e-8
@@ -53,7 +52,7 @@ def calc_Heff(tcwv, rho, ps, theta):
     return Heff
     
 
-def DO98_UM75(a, vals):
+def DO98_UM75(temp, cf, pw):
     '''Estimates the downwelling longwave given the parameters
     and temperature, cloud fraction and precipitable water.
     Implements the clear-sky parameterisation of Dilley and O'Brien (1998)
@@ -61,37 +60,33 @@ def DO98_UM75(a, vals):
     Unsworth and Monteith (1975) https://doi.org/10.1002/qj.49710142703
 
     Inputs:
-        vals - list containing:
-            temp - Near-surface air temperature (K): xarray dataarray
-            cf - Cloud fraction (0-1): xarray dataarray
-            pw - column precipitable water (kg/m^2): xarray dataarray
+        temp - Near-surface air temperature (K): xarray dataarray
+        cf - Cloud fraction (0-1): xarray dataarray
+        pw - column precipitable water (kg/m^2): xarray dataarray
         a - tuning parameters: floats
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
-    a3 = a[3]/100    #Factor 100 correction to ensure all parameters have the same order of magnitude
-    L_clr = a[0] + a[1]*(vals[0]/273.16)**6 + a[2]*np.sqrt(vals[2]/25)
-    L = (1-a3*vals[1])*L_clr + a3*vals[1]*sigma*vals[0]**4
+    L_clr = 36.07 + 126.3*(temp/273.16)**6 + 98.02*np.sqrt(pw/25)
+    L = (1-0.6436*cf)*L_clr + 0.6436*cf*sigma*temp**4
     return L
 
-def C14(a, vals):
+def C14(temp, RH, cf):
     '''Estimates the downwelling longwave given the parameters
     and temperature, relative humidity and cloud fraction.
     Implements the method from Eq. 28 of Carmona et al. (2014)
     https://doi.org/10.1007/s00704-013-0891-3
 
     Inputs:
-        vals - list containing:
-            temp - Near-surface air temperature (K): xarray dataarray
-            RH - relative humidity (0-1):xarray dataarray
-            cf - Cloud fraction (0-1): xarray dataarray
-        a - tuning parameters: floats
+        temp - Near-surface air temperature (K): xarray dataarray
+        RH - relative humidity (0-1):xarray dataarray
+        cf - Cloud fraction (0-1): xarray dataarray
+        a1 ~ a4 - tuning parameters: floats
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
-    a1 = a[1]/100 #Factor 100 correction to ensure all parameters have the same order of magnitude
-    L = (a[0] + a1*vals[0] + a[2]*vals[1] + a[3]*vals[2])* sigma * vals[0] ** 4
+    L = (-0.05835 + 0.002448*temp + 0.2003*RH + 0.1068*cf)* sigma * temp ** 4
     return L
 
-def CN14(a, vals):
+def CN14(temp, vp, cf):
     '''Estimates the downwelling longwave given the parameters
     and temperature, relative humidity and cloud fraction.
     Implements the method from Table 4 in Cheng and Nnadi (2014)
@@ -103,16 +98,16 @@ def CN14(a, vals):
         cf - Cloud fraction (0-1): xarray dataarray
         a1 ~ a6 - tuning parameters: floats
     Returns:
-        L - estimated downwelling longwave (W/m^2)'''
-    #adjust params (want inputs to be same order of magnitude for basin hopping)
-    a1 = a[1]*100
-
-    eps_clr = (1+a[0]*np.exp(-vals[0]/a1)+a[2]*np.exp(-vals[1]/a[3]))
-    L_clr = eps_clr * sigma * vals[0]**4
-    L = L_clr * (1 + a[4]*vals[2]**a[5])
+        L - estimated downwelling longwave (W/m^2)'''    
+    #eps_clr = (1-6.437*np.exp(-temp/78.71)-0.2826*np.exp(-vp/1.802e-2))
+    #L_clr = eps_clr * sigma * temp**4
+    #L = L_clr * (1 + 0.1214*cf**3.388)
+    eps_clr = (1-1.977*np.exp(-temp/149.0)+0.03066*np.exp(-vp/4.255))
+    L_clr = eps_clr * sigma * temp**4
+    L = L_clr * (1 + 0.3160*cf**0.8506)
     return L
 
-def deK20(a,vals):
+def deK20(temp, sw_clr, RH):
     '''Estimates the downwelling longwave given the parameters
     and temperature, relative humidity and cloud fraction.
     Implements the method from deKok et al. (2020)
@@ -125,16 +120,13 @@ def deK20(a,vals):
         a1 ~ a6 - tuning parameters: floats
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
-    a2 = a[2] / 100
-    a5 = a[5] / 100
-    
-    day = xr.where(vals[1] < 50, True, False)
+    day = xr.where(sw_clr < 50, True, False)
 
-    clr_branch = a[0] + a[1]*vals[2] + a2*sigma*vals[0]**4
-    cloud_branch = a[3] + a[4]*vals[2] + a5*sigma*vals[0]**4
+    clr_branch = -126.1 + 114.5*RH + 0.9687*sigma*temp**4
+    cloud_branch = -99.74 + 86.73*RH + 0.9706*sigma*temp**4
     
-    day_L = xr.where(vals[2] < 0.6, clr_branch, cloud_branch)
-    night_L = xr.where(vals[2] < 0.8, clr_branch, cloud_branch)
+    day_L = xr.where(RH < 0.6, clr_branch, cloud_branch)
+    night_L = xr.where(RH < 0.8, clr_branch, cloud_branch)
 
     L = xr.where(day == True, day_L, night_L)
     return L
@@ -155,8 +147,8 @@ def SR21(temp, dpt, tcwv, ps, theta=40.3, ppm = 400):
     Returns:
         L_clr - estimated clear-sky downwelling longwave (W/m^2)'''
     SR21_data = sp.io.loadmat("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/data.mat")
-    Heff_lookup = SR21_data['Heff'].flatten()
-    q_lookup = SR21_data['q'].flatten()
+    Heff_lookup = SR21_data['Heff']
+    q_lookup = SR21_data['q']
     tau_lookup = SR21_data['tau_eff_'+str(ppm)]
     
     q = calc_specific_humidity(ps, dpt)
@@ -179,7 +171,7 @@ def SR21(temp, dpt, tcwv, ps, theta=40.3, ppm = 400):
     L_clr = sigma * temp**4 * (1 - np.exp(-tau))
     return L_clr
 
-def SR21_BE23(a, vals):
+def SR21_BE23(temp, dpt, tcwv, ps, RH):
     '''Estimates the downwelling longwave given the
     temperature, specific humidity, surface pressure.
     Implements the method from Bright and Eisner (2023) https://doi.org/10.1029/2023GL103790, 
@@ -195,15 +187,14 @@ def SR21_BE23(a, vals):
         a1~a4 - tuning parameters: float
     Returns:
         L - estimated clear-sky downwelling longwave (W/m^2)'''
-    a1 = a[1]/100
-    a3 = a[3]/100
-    L_clr = SR21(vals[0], vals[1], vals[2], vals[3], theta=40.3, ppm=400)
-    e_sat = calc_vapor_pressure(vals[0])
-    cloud_correction = (a[0] + a1*e_sat)*vals[4]**(a[2] + a3*e_sat)
-    L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* vals[0] **4
+    L_clr = SR21(temp, dpt, tcwv, ps, theta=40.3, ppm=400)
+    e_sat = calc_vapor_pressure(temp)
+    #cloud_correction = (0.9364 + 1.115e-5*e_sat)*RH**(0.1392 - 1.190e-5*e_sat)
+    cloud_correction = (0.8843 - 0.009296*e_sat/100)*RH**(1.636 + 0.05411*e_sat/100)
+    L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* temp **4
     return L
 
-def B32_BE23(a, vals):
+def B32_BE23(temp, dpt, RH):
     '''Estimates the downwelling longwave given the
     temperature, specific humidity, surface pressure.
     Implements the method from Bright and Eisner (2023) https://doi.org/10.1029/2023GL103790, 
@@ -219,16 +210,11 @@ def B32_BE23(a, vals):
         a1~a6 - tuning parameters: floats
     Returns:
         L - estimated clear-sky downwelling longwave (W/m^2)'''
-    a1 = a[1]/100
-    a3 = a[3]/100
-    a4 = a[4]*10
-    a5 = a[5]/10
-    
-    vp = calc_vapor_pressure(vals[1])
-    L_clr = (a[0] + a1*np.sqrt(vp))*sigma*vals[0]**4
-    e_sat = calc_vapor_pressure(vals[0])
-    cloud_correction = (a[2] + a3*e_sat)*vals[2]**(a4 + a5*e_sat)
-    L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* vals[0] **4
+    vp = calc_vapor_pressure(dpt)
+    L_clr = (0.5996 + 0.005174*np.sqrt(vp))*sigma*temp**4
+    e_sat = calc_vapor_pressure(temp)
+    cloud_correction = (1.013 - 0.0001594*e_sat)*RH**(2.433 + 0.0001635*e_sat)
+    L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* temp **4
     return L
 
 def RMSE(est, true):
@@ -240,57 +226,5 @@ def RMSE(est, true):
         rmse - root mean squared error: float'''
     SE = (est - true)**2
     weighting = np.cos(np.radians(SE.latitude))
-    MSE = SE.weighted(weighting).mean()
+    MSE = SE.weighted(weighting).mean(('valid_time', 'latitude', 'longitude'))
     return np.sqrt(MSE)
-    
-
-def error_function(a, func, true_DLR, vals):
-    '''Calculate the error between the function estimated DLR
-    and the true DLR from ERA5.
-    Inputs:
-        a - parameters we are trying to optimize (list of floats)
-        func - the DLR estimation method
-        true_DLR - the ERA5 downwelling longwave (W/m^2): xarray dataarray
-        vals - the other physical data we are using: list of xarray dataarrays
-    Returns:
-        RMSE - the root mean squared error'''
-    est = func(a, vals)
-    return RMSE(est, true_DLR)
-
-def main():
-    '''Main script for calculating the optimized coefficients
-    for the models we are comparing against'''
-
-    #Open dataset and calculate all values we need to estimate DLR
-    data = xr.open_mfdataset("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/*.nc", engine="netcdf4").resample({'valid_time':'MS'}).mean().compute()
-    data['vp_sat'] = calc_vapor_pressure(data['t2m'])
-    data['vp'] = calc_vapor_pressure(data['d2m'])
-    data['rh'] = data['vp']/data['vp_sat']
-    
-    true_DLR = data['avg_sdlwrf']
-    random.seed(10)
-    
-    function_dict = {DO98_UM75:[data['t2m'], data['tcc'], data['tcwv']], 
-                     C14:[data['t2m'], data['rh'], data['tcc']],
-                     CN14:[data['t2m'], data['vp'], data['tcc']],
-                     deK20:[data['t2m'], data['avg_sdswrfcs'], data['rh']],
-                     SR21_BE23:[data['t2m'], data['d2m'], data['tcwv'], data['sp'], data['rh']],
-                     B32_BE23:[data['t2m'], data['d2m'], data['rh']]}
-    
-    #Initial guesses (use values from the original papers)
-    x0_list = [np.array([59.38, 113.7, 96.96, 84]),
-               np.array([-0.34, 0.336, 0.194, 0.213]),
-               np.array([-1.977, 149, 0.03066, 4.255, 0.316, 0.8506]),
-               np.array([-75.28, 82, 79, -212.59, 189, 106]),
-               np.array([0.9385, -1.14, 2.326, 2.91]),
-               np.array([0.5856, 0.525, 1.043, -1.72, 0.3061, -0.308])]
-    #Alter stepsizes depending on the size of the x0 we have
-    step_list = [5, 0.05, 0.25, 7.5, 0.1, 0.1]
-    for func, x0, step in zip(function_dict, x0_list, step_list):
-        #Implement basin hopping for global minimum
-        res = sp.optimize.basinhopping(error_function, x0=x0, stepsize=step, niter_success=10, 
-                                       minimizer_kwargs={'args':(func, true_DLR, function_dict[func])})
-        print(res.x)
-    return None
-
-main()

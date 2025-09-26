@@ -84,10 +84,11 @@ def _(SST_series, T_series, ocean_anom_data, weights, xs):
 
     ocean_roll = ocean_anom_data.rolling(dim={"time":30}, center=True).construct(window_dim="regress_time")
 
-    ocean_window = calc_pattern(ocean_roll).dropna("time", how="all").compute()
+    ocean_window = calc_pattern(ocean_roll).dropna("time", how="all")
     SST_window = calc_pattern(SST_roll).dropna("time", how="all")
 
-    sst_idx = (SST_window.sel({"lat":slice(-15, 15), "lon":slice(150,170)}).weighted(weights).mean(("lat", "lon")) - SST_window.sel({"lat":slice(-30, 0), "lon":slice(260,280)}).weighted(weights).mean(("lat", "lon")))
+    #Calculate the zonal gradient (West - East equatorial Pacific)
+    sst_idx = (SST_window.sel({"lat":slice(-5, 5), "lon":slice(110,180)}).weighted(weights).mean(("lat", "lon")) - SST_window.sel({"lat":slice(-5, 5), "lon":slice(180,270)}).weighted(weights).mean(("lat", "lon")))
     return SST_window, ocean_window, sst_idx
 
 

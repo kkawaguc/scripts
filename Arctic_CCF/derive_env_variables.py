@@ -18,6 +18,8 @@ def calc_tropo_temp(ta):
         750.,  700.,  650.,  600.,  550.,  500.,  450.,  400.,  350.,  300.,
         250.,  225.,  200.,  175.,  150.,  125.,  100.,   70.,   50.,   30.,
          20.,   10.,    7.,    5.,    3.,    2.,    1.])
+    print(np.shape(plev))
+    print(np.shape(ta))
     T_interp = sp.interpolate.CubicSpline(plev[::-1], np.flip(ta, axis=-1), axis=-1)
     interp_locs = np.linspace(50, 400, 100)
     T_interpolated = T_interp(interp_locs)
@@ -25,8 +27,8 @@ def calc_tropo_temp(ta):
     return tropopause_temp
 
 def calc_tropo_gridded(vert_temp):
-    tropopause_gridded = xr.apply_ufunc(calc_tropo_temp, vert_temp, input_core_dims=[['pressure_level']], output_core_dims=[],
-                                        dask='parallelize')
+    tropopause_gridded = xr.apply_ufunc(calc_tropo_temp, vert_temp, input_core_dims=[['pressure_level']], output_core_dims=[[]],
+                                        dask='parallelized', vectorize=True)
     return tropopause_gridded
 
 def calc_LTS(vert_temp, surf_temp):
@@ -43,6 +45,8 @@ def main():
     vert_temp = xr.open_dataset("/gws/nopw/j04/csgap/kkawaguchi/era5/ArcticCCF_temp.nc")
     surf_data = xr.open_dataset("/gws/nopw/j04/csgap/kkawaguchi/era5/polarCCF_surface.nc")
     
+    print(np.shape(vert_temp['t']))
+
     surf_data['trp_temp'] = calc_tropo_gridded(vert_temp['t'])
     surf_data['LTS'] = calc_LTS(vert_temp, surf_data['skt'])
     surf_data.to_netcdf("/gws/nopw/j04/csgap/kkawaguchi/era5/polarCCF_singlelevel.nc")
