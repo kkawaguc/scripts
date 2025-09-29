@@ -102,9 +102,9 @@ def CN14(temp, vp, cf):
     #eps_clr = (1-6.437*np.exp(-temp/78.71)-0.2826*np.exp(-vp/1.802e-2))
     #L_clr = eps_clr * sigma * temp**4
     #L = L_clr * (1 + 0.1214*cf**3.388)
-    eps_clr = (1-1.977*np.exp(-temp/149.0)+0.03066*np.exp(-vp/4.255))
+    eps_clr = (1-0.163*np.exp(-temp/763700)-0.1504*np.exp(-vp/2197))
     L_clr = eps_clr * sigma * temp**4
-    L = L_clr * (1 + 0.3160*cf**0.8506)
+    L = L_clr * (1 + 0.2149*cf**0.9609)
     return L
 
 def deK20(temp, sw_clr, RH):
@@ -190,7 +190,7 @@ def SR21_BE23(temp, dpt, tcwv, ps, RH):
     L_clr = SR21(temp, dpt, tcwv, ps, theta=40.3, ppm=400)
     e_sat = calc_vapor_pressure(temp)
     #cloud_correction = (0.9364 + 1.115e-5*e_sat)*RH**(0.1392 - 1.190e-5*e_sat)
-    cloud_correction = (0.8843 - 0.009296*e_sat/100)*RH**(1.636 + 0.05411*e_sat/100)
+    cloud_correction = (0.9142 - 1.457e-4*e_sat)*RH**(1.947 + 1.18e-4*e_sat)
     L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* temp **4
     return L
 

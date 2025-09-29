@@ -48,7 +48,7 @@ def main():
     print(np.shape(vert_temp['t']))
 
     surf_data['trp_temp'] = calc_tropo_gridded(vert_temp['t'])
-    surf_data['LTS'] = calc_LTS(vert_temp, surf_data['skt'])
+    surf_data['LTS'] = calc_LTS(vert_temp['t'], surf_data['skt'])
     surf_data.to_netcdf("/gws/nopw/j04/csgap/kkawaguchi/era5/polarCCF_singlelevel.nc")
     return None
 

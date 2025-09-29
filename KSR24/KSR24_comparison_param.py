@@ -285,7 +285,7 @@ def main():
                np.array([0.9385, -1.14, 2.326, 2.91]),
                np.array([0.5856, 0.525, 1.043, -1.72, 0.3061, -0.308])]
     #Alter stepsizes depending on the size of the x0 we have
-    step_list = [5, 0.05, 0.25, 7.5, 0.1, 0.1]
+    step_list = [5, 0.05, 0.25, 7.5, 0.1, 0.05]
     for func, x0, step in zip(function_dict, x0_list, step_list):
         #Implement basin hopping for global minimum
         res = sp.optimize.basinhopping(error_function, x0=x0, stepsize=step, niter_success=10, 
