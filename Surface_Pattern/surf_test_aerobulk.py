@@ -25,7 +25,6 @@ def importpackages():
         calc_dHF,
         calc_fdbk,
         calc_land_mask,
-        ccrs,
         facetplot,
         mo,
         np,
@@ -39,7 +38,7 @@ def importpackages():
 @app.cell
 def _(calc_land_mask, np, xr):
     #Replace here with amip-piForcing or historical simulations
-    base_data = xr.open_dataset("/gws/nopw/j04/csgap/kkawaguchi/surface_data/piControl.nc", chunks={'lat':36, 'lon':36})
+    base_data = xr.open_dataset("/gws/nopw/j04/csgap/kkawaguchi/surface_data/amip-piForcing.nc", chunks={'lat':36, 'lon':36})
 
 
     #Regrid to calculate the land mask
@@ -71,10 +70,11 @@ def _(TOA_fdbk, plt, weights):
 
 
 @app.cell
-def _(TOA, T_series, facetplot, sfc, xr, xs):
+def _(Fueglistaler_idx_raw, TOA, facetplot, sfc, xr, xs):
     energy_budget = xr.concat([TOA, sfc], dim='z')
     energy_budget = energy_budget.assign_coords({'z':['TOA', 'sfc']})
-    facetplot(xs.linslope(T_series, energy_budget, dim='time'), 'model', 'z', title='Feedback ($\\mathrm{W/m^2/K}$)')
+    facetplot(xs.linslope(Fueglistaler_idx_raw, energy_budget, dim='time'), 'model', 'z', title='Feedback ($\\mathrm{W/m^2/K}$)',
+              vmin=-40, vmax=40, cmap='RdBu_r')
     return
 
 
@@ -129,7 +129,7 @@ def _(SST_series, T_series, calc_fdbk, np, ocean_flux, weights, xr):
     Fueglistaler_idx_raw = xr.where(tropical_SST > Fueglistaler_threshold, tropical_SST, np.nan).weighted(weights).mean(('lat', 'lon')) - tropical_SST.weighted(weights).mean(('lat', 'lon'))
 
     Fueglistaler_idx = calc_fdbk(Fueglistaler_idx_raw, T_series)
-    return Fueglistaler_idx, Watanabe_idx
+    return Fueglistaler_idx, Fueglistaler_idx_raw, Watanabe_idx
 
 
 @app.cell
@@ -212,94 +212,7 @@ def _(dHF_slope, facetplot):
 
 @app.cell
 def _(dHF_slope, facetplot):
-    facetplot(-dHF_slope['qh'], 'model', 'Varied Fields', vmin=-75, vmax=75, cmap='RdBu_r')
-    return
-
-
-@app.cell
-def _(dHF_slope):
-    dHF_slope
-    return
-
-
-@app.cell
-def _(ccrs, lh_slope, lh_temp_slope, lh_wind_slope, plt):
-    fig, ax = plt.subplots(nrows = 2, ncols = 2, layout="constrained", figsize=(8, 4.5), subplot_kw={"projection": ccrs.Robinson(central_longitude=210)})
-
-    lh_wind_slope.mean("model").plot(ax=ax[0,0], vmin=-50, vmax=50, extend="both", cmap="coolwarm", transform=ccrs.PlateCarree(), add_colorbar=False)
-    lh_temp_slope.mean("model").plot(ax=ax[0,1], vmin=-50, vmax=50, extend="both", cmap="coolwarm", transform=ccrs.PlateCarree(), add_colorbar=False)
-    (lh_wind_slope+lh_temp_slope).mean("model").plot(ax=ax[1,0], vmin=-50, vmax=50, extend="both", cmap="coolwarm",transform=ccrs.PlateCarree(), add_colorbar=False)
-    cb=lh_slope.mean("model").plot(ax=ax[1,1], vmin=-50, vmax=50, extend="both", cmap="coolwarm", transform=ccrs.PlateCarree(), add_colorbar=False)
-
-    for i in range(4):
-        ax[i//2, i%2].coastlines()
-
-    fig.colorbar(cb, ax=ax[:,:], orientation="vertical", aspect=15, shrink=0.8, extend="both", label="dFlux/d$\\phi$")
-
-    ax[0,0].set_title("Wind")
-    ax[0,1].set_title("Temperature")
-    ax[1,0].set_title("Sum")
-    ax[1,1].set_title("LHF")
-    return
-
-
-@app.cell
-def _(ccrs, plt, sh_slope, sh_temp_slope, sh_wind_slope):
-    fig1, ax1 = plt.subplots(nrows = 2, ncols = 2, layout="constrained", figsize=(8, 4.5), subplot_kw={"projection": ccrs.Robinson(central_longitude=210)})
-
-    sh_wind_slope.mean("model").plot(ax=ax1[0,0], vmin=-15, vmax=15, extend="both", cmap="coolwarm",transform=ccrs.PlateCarree(), add_colorbar=False)
-    sh_temp_slope.mean("model").plot(ax=ax1[0,1], vmin=-15, vmax=15, extend="both", cmap="coolwarm",transform=ccrs.PlateCarree(), add_colorbar=False)
-    (sh_wind_slope+sh_temp_slope).mean("model").plot(ax=ax1[1,0], vmin=-15, vmax=15, extend="both", cmap="coolwarm",transform=ccrs.PlateCarree(), add_colorbar=False)
-    cb1 = sh_slope.mean("model").plot(ax=ax1[1,1], vmin=-15, vmax=15, extend="both",  cmap="coolwarm",transform=ccrs.PlateCarree(), add_colorbar=False)
-
-    for j in range(4):
-        ax1[j//2, j%2].coastlines()
-
-    fig1.colorbar(cb1, ax=ax1[:,:], orientation="vertical", aspect=15, shrink=0.8, extend="both",label="dFlux/d$\\phi$")
-
-    ax1[0,0].set_title("Wind")
-    ax1[0,1].set_title("Temperature")
-    ax1[1,0].set_title("Sum")
-    ax1[1,1].set_title("SHF")
-    return
-
-
-@app.cell
-def _(ccrs, lh_slope, plt, rad_slope, sfc_slope, sh_slope, sst_slope):
-    fig2 = plt.figure(figsize=(10, 8), layout="constrained")
-    subfigs = fig2.subfigures(nrows=2, ncols=1, height_ratios=[0.8, 1])
-
-    ax3 = subfigs[0].subplots(1, 1, subplot_kw={"projection": ccrs.Robinson(central_longitude=210)})
-    sst_slope.mean("model").plot(ax=ax3, transform=ccrs.PlateCarree(), vmin=-3, vmax=3, cmap="coolwarm", cbar_kwargs={"label":"dT/d$\\phi$"})
-    ax3.set_title("Warming Pattern")
-    ax3.set_position([0.2, 0, 0.5, 1])
-    ax3.coastlines()
-
-
-    ax4 = subfigs[1].subplots(2, 2, subplot_kw={"projection": ccrs.Robinson(central_longitude=210)})
-
-    sfc_slope.mean("model").plot(ax=ax4[0,0], transform=ccrs.PlateCarree(), vmin=-40, vmax=40, cmap="coolwarm", extend="both", add_colorbar=False)
-    rad_slope.mean("model").plot(ax=ax4[0,1], transform=ccrs.PlateCarree(), vmin=-40, vmax=40, cmap="coolwarm", extend="both", add_colorbar=False)
-    lh_slope.mean("model").plot(ax=ax4[1,0], transform=ccrs.PlateCarree(), vmin=-40, vmax=40, cmap="coolwarm", extend="both", add_colorbar=False)
-    cb2=sh_slope.mean("model").plot(ax=ax4[1,1], transform=ccrs.PlateCarree(), vmin=-40, vmax=40, cmap="coolwarm", extend="both", add_colorbar=False)
-
-    for k in range(4):
-        ax4[k//2, k%2].coastlines()
-
-    fig2.colorbar(cb2, ax=ax4[:,:], orientation="vertical", aspect=15, shrink=0.8, extend="both", label="dFlux/d$\\phi$")
-
-    ax4[0,0].set_title("Total Surface Flux")
-    ax4[0,1].set_title("Radiation")
-    ax4[1,0].set_title("LH")
-    ax4[1,1].set_title("SH")
-
-    plt.show()
-    return
-
-
-@app.cell
-def _(lh_all_slope):
-    lh_all_slope.mean("model").plot(vmin=-50, vmax=50, extend="both", cmap="coolwarm")
+    facetplot(dHF_slope['qh'], 'model', 'Varied Fields', vmin=-75, vmax=75, cmap='RdBu_r')
     return
 
 

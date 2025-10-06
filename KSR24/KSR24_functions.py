@@ -231,6 +231,29 @@ def B32_BE23(temp, dpt, RH):
     L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* temp **4
     return L
 
+def SR21_inversion(temp, dpt, tcwv, ps, ppm = 400):
+    '''Function for the clear-sky correction to account for temperature inversions.
+    In the case that an inversion exists, we assume that the tcwv is constant (as it is
+    a direct ERA5 input), but the specific humidity scales (assume that the RH at near surface
+    is equal to RH at inversion top). https://doi.org/10.1002/joc.7780
+    Inputs:
+        a: coefficients to be optimised
+        vars: variables needed to calculate the clear-sky DLR
+    Returns:
+        adjusted_SR21: estimated DLR clear-sky'''
+    temp_eff = xr.where(temp >= 270, temp, 0.6719*temp + 270 * (1-0.6719))
+
+    vp = calc_vapor_pressure(dpt)
+    sat_vap = calc_vapor_pressure(temp)
+    rh = vp/sat_vap
+    sat_vap_eff = calc_vapor_pressure(temp_eff)
+
+    vp_eff = xr.where(temp >= 270, vp, rh * sat_vap_eff)
+    dpt_eff = xr.where(temp >= 270, dpt, vp2dpt(vp_eff))
+
+    ps_eff = 0.7592*ps
+    return SR21(temp_eff, dpt_eff, tcwv, ps_eff, theta=52.7, ppm=ppm)
+
 def RMSE(est, true):
     '''Returns the root mean squared error
     Inputs:
