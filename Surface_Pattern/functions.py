@@ -4,6 +4,8 @@ import numpy as np
 import global_land_mask as lm
 import easyclimate.core.utility as utility
 import easyclimate.field.boundary_layer.aerobulk as aerobulk
+import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
 
 def calc_land_mask(data):
     '''Calculate a land mask
@@ -65,7 +67,63 @@ def calc_fdbk(data, tas, yrs=30):
     Returns:
         fdbk: time-varying feedback
     '''
-    data_roll = data.rolling(dim={"time":yrs}, center=True).construct(window_dim="regress_time")
+    
+    if 'lat' in data.dims:
+        data_roll = data.rolling(dim={"time":yrs}, center=True).construct(window_dim="regress_time").chunk({'lat':18, 'lon':36})
+    else:
+        data_roll = data.rolling(dim={"time":yrs}, center=True).construct(window_dim="regress_time")
     tas_roll = tas.rolling(dim={"time":yrs}, center=True).construct(window_dim="regress_time")
-    fdbk = xs.linslope(tas_roll, data_roll, dim='regress_time')
-    return fdbk.chunk({'lat':36, 'lon':36})
+    fdbk = xs.linslope(tas_roll, data_roll, dim='regress_time').dropna(dim='time', how='all')
+    if 'lat' in fdbk.dims:
+        return fdbk.chunk({'time':-1, 'lat':36, 'lon':36})
+    else:
+        return fdbk.compute()
+    
+def facetplot(data, dims_to_reduce=None, facet_dim=None, title='', **kwargs):
+    """
+    Plotting routine for a facetplot.
+
+    Parameters:
+        data: xarray.DataArray or xarray.Dataset
+        dims_to_reduce: str or list/tuple of str, dimensions to average over
+        facet_dim: str, dimension to facet along
+        title: title of the plot
+        **kwargs: additional keyword arguments passed to .plot()
+    """
+    # Ensure dims_to_reduce is a tuple if provided
+    if dims_to_reduce is not None and isinstance(dims_to_reduce, list):
+        dims_to_reduce = tuple(dims_to_reduce)
+
+    # Pad longitude and assign new coordinates
+    data_padded = data.pad({'lon': 1}, mode='wrap').assign_coords(
+        {'lon': np.linspace(-1.25, 361.25, data.sizes['lon'] + 2)}
+    )
+
+    # Extract and override subplot_kws if needed
+    subplot_kws = kwargs.pop('subplot_kws', {})
+    subplot_kws.setdefault('projection', ccrs.Robinson(central_longitude=180))
+
+    # Apply mean reduction if specified
+    if dims_to_reduce is not None:
+        data_padded = data_padded.mean(dims_to_reduce)
+
+    # Plot with all remaining kwargs
+    plot = data_padded.plot(
+        col=facet_dim,
+        subplot_kws=subplot_kws,
+        transform=ccrs.PlateCarree(),
+        **kwargs
+    )
+
+    plt.suptitle(title)
+
+    # Add coastlines
+    if facet_dim == None:
+        plot.axes.coastlines()
+    else:
+        for ax in plot.axs.flatten():
+            ax.coastlines()
+
+    plt.show()
+    return None
+    

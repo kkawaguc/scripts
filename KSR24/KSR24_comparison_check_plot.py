@@ -47,8 +47,6 @@ def main2():
     #plot.savefig('test_plot2.png')
     
     print(RMSE(true_DLR, est_DLR))
-    #array([ 7.90113688,  7.23587302, 15.25444936,  9.41461849, 10.35658033,
-    #    8.86408141])
     return None
 
-main()
+main2()

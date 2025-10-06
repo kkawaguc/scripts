@@ -1,3 +1,5 @@
+#Refined script to calculate the parameter values for the comparison for KSR24
+
 import xarray as xr
 import scipy as sp
 import numpy as np

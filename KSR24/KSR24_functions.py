@@ -25,6 +25,20 @@ def calc_vapor_pressure(temp):
     vp = xr.where(temp_celsius > 0, pos_vap, neg_vap)
     return vp
 
+def vp2dpt(vp):
+    '''Calculates the dew point from the vapor pressure using
+    the improved Magnus formula with respect to water and ice
+    Taken from Huang (2018).
+    Inputs:
+        vp: vapor pressure in Pa
+    Returns:
+        dpt: 2m dew point temperature'''
+    a1 = 243.04*np.log(vp/610.94)
+    a2 = 17.625-np.log(vp/610.94)
+    b1 = 273.86*np.log(vp/611.21)
+    b2 = 22.587-np.log(vp/611.21)
+    return np.where(vp>610.94, a1/a2+273.15, b1/b2+273.15)
+
 def calc_specific_humidity(ps, dpt):
     '''Calculates specific humidity from the surface pressure and the
     dew point temperature.

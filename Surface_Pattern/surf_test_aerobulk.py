@@ -19,9 +19,21 @@ def importpackages():
     import xskillscore as xs
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
-    from functions import calc_land_mask, calc_fdbk, calc_dHF
+    from functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
     import pandas as pd
-    return calc_dHF, calc_fdbk, calc_land_mask, ccrs, mo, np, pd, plt, xr, xs
+    return (
+        calc_dHF,
+        calc_fdbk,
+        calc_land_mask,
+        ccrs,
+        facetplot,
+        mo,
+        np,
+        pd,
+        plt,
+        xr,
+        xs,
+    )
 
 
 @app.cell
@@ -43,13 +55,47 @@ def _(calc_land_mask, np, xr):
 
 
 @app.cell
-def _(ocean_flux):
-    ocean_flux
+def _(T_series, base_data, calc_fdbk):
+    TOA = -(base_data['rlut'] + base_data['rsut'])
+    TOA_fdbk = calc_fdbk(TOA, T_series)
+    return TOA, TOA_fdbk
+
+
+@app.cell
+def _(TOA_fdbk, plt, weights):
+    TOA_fdbk.weighted(weights).mean(('lat', 'lon')).plot.line(x='time')
+    plt.ylim([-3.5, 0.5])
+    plt.title('TOA Fdbk ($\\mathrm{W/m^2/K}$)')
+    plt.show()
     return
 
 
 @app.cell
-def _(base_data, np, ocean_flux, xr):
+def _(TOA, T_series, facetplot, sfc, xr, xs):
+    energy_budget = xr.concat([TOA, sfc], dim='z')
+    energy_budget = energy_budget.assign_coords({'z':['TOA', 'sfc']})
+    facetplot(xs.linslope(T_series, energy_budget, dim='time'), 'model', 'z', title='Feedback ($\\mathrm{W/m^2/K}$)')
+    return
+
+
+@app.cell
+def _(T_series, base_data, calc_fdbk):
+    sfc = (base_data['rsds'] + base_data['rlds'] - base_data['rlus'] - base_data['rsus'] - base_data['hfss'] - base_data['hfls'])
+    sfc_fdbk = calc_fdbk(sfc, T_series)
+    return sfc, sfc_fdbk
+
+
+@app.cell
+def _(plt, sfc_fdbk, weights):
+    sfc_fdbk.weighted(weights).mean(('lat', 'lon')).plot.line(x='time')
+    plt.title('Surface Fdbk ($\\mathrm{W/m^2/K}$)')
+    plt.ylim([-3.5, 0.5])
+    plt.show()
+    return
+
+
+@app.cell
+def _(base_data, calc_fdbk, np, ocean_flux, xr):
     #Calculate surface heat anomalies over the ocean
     ocean_anom_data = ocean_flux - ocean_flux.mean("time")
     ocean_anom_data["sfc_rad"] = ocean_anom_data["rlds"] + ocean_anom_data["rsds"] - ocean_anom_data["rlus"] - ocean_anom_data["rsus"]
@@ -62,45 +108,70 @@ def _(base_data, np, ocean_flux, xr):
     SST_series = (ocean_flux["ts"] - ocean_flux["ts"].mean("time")).rename('ts')
 
     temp_series = xr.merge([T_series, SST_series])
-    return SST_series, T_series, weights
+
+    ocean_window = calc_fdbk(ocean_anom_data, T_series)
+    return SST_series, T_series, ocean_window, weights
 
 
 @app.cell
-def _(SST_series, T_series, calc_fdbk, weights):
+def _(SST_series, T_series, calc_fdbk, np, ocean_flux, weights, xr):
     SST_window = calc_fdbk(SST_series, T_series)
 
-    #Calculate the zonal gradient (West - East equatorial Pacific)
-    sst_idx = (SST_window.sel({"lat":slice(-5, 5), "lon":slice(110,180)}).weighted(weights).mean(("lat", "lon")) - SST_window.sel({"lat":slice(-5, 5), "lon":slice(180,270)}).weighted(weights).mean(("lat", "lon")))
-    return SST_window, sst_idx
+    #Calculate the SST indices (Watanabe and Fueglistaler)
+    Watanabe_idx_raw = (ocean_flux['ts'].sel({"lat":slice(-5, 5), "lon":slice(180,270)}).weighted(weights).mean(("lat", "lon")) - ocean_flux['ts'].sel({"lat":slice(-5, 5), "lon":slice(110,180)}).weighted(weights).mean(("lat", "lon")))
+
+    Watanabe_idx = calc_fdbk(Watanabe_idx_raw, T_series)
+
+    tropical_SST = ocean_flux['ts'].sel({'lat':slice(-30, 30)}).compute()
+
+    Fueglistaler_threshold = tropical_SST.weighted(weights).quantile(0.7, dim=('lat', 'lon'))
+
+    Fueglistaler_idx_raw = xr.where(tropical_SST > Fueglistaler_threshold, tropical_SST, np.nan).weighted(weights).mean(('lat', 'lon')) - tropical_SST.weighted(weights).mean(('lat', 'lon'))
+
+    Fueglistaler_idx = calc_fdbk(Fueglistaler_idx_raw, T_series)
+    return Fueglistaler_idx, Watanabe_idx
 
 
 @app.cell
-def _(SST_window, plt):
-    SST_window.isel({"time":0}).plot(col="model", robust=True)
-    plt.show()
-    return
+def _(Fueglistaler_idx, Watanabe_idx, mo):
+    idx_choice = mo.ui.dropdown(options = ['Equatorial Pacific: Watanabe et al. (2021)',
+                                          'SST#: Fueglistaler (2019)'], 
+                                value = 'SST#: Fueglistaler (2019)')
+
+    idx_options = {'Equatorial Pacific: Watanabe et al. (2021)': Watanabe_idx, 'SST#: Fueglistaler (2019)': Fueglistaler_idx}
+
+    idx_choice
+    return idx_choice, idx_options
 
 
 @app.cell
-def _(SST_window, ocean_window, sst_idx, xs):
-    sfc_slope = xs.linslope(sst_idx,ocean_window["sfc"], dim="time")
-    rad_slope = xs.linslope(sst_idx,ocean_window["sfc_rad"], dim="time")
-    lh_slope = xs.linslope(sst_idx,-ocean_window["hfls"], dim="time")
-    sh_slope = xs.linslope(sst_idx,-ocean_window["hfss"], dim="time")
-    sst_slope = xs.linslope(sst_idx, SST_window, dim="time")
-    return lh_slope, rad_slope, sfc_slope, sh_slope, sst_slope
+def _(idx_choice, idx_options):
 
-
-@app.cell
-def _(plt, sst_slope):
-    sst_slope.plot(col="model", vmin=-3, vmax=3, cmap="coolwarm")
-    plt.show()
-    return
+    sst_idx = idx_options[idx_choice.value]
+    return (sst_idx,)
 
 
 @app.cell
 def _(sst_idx):
-    sst_idx.plot.line(x="time")
+    sst_idx.plot.line(x='time')
+    return
+
+
+@app.cell
+def _(ocean_window, sst_idx, xs):
+    ocean_slope = xs.linslope(sst_idx, ocean_window, dim='time').drop_vars(['quantile', 'height'])
+    return (ocean_slope,)
+
+
+@app.cell
+def _(facetplot, ocean_slope):
+    facetplot(ocean_slope['ts'], None, 'model', title='Warming pattern regressed onto SST index ($\\mathrm{K / K K^{-1}}$)',robust=True)
+    return
+
+
+@app.cell
+def _(facetplot, ocean_slope):
+    facetplot(ocean_slope['sfc'], 'model', None, title='SE imbalance regressed onto SST index ($\\mathrm{W m^{-2} K^{-1} / K K^{-1}}$)',robust=True)
     return
 
 
@@ -111,38 +182,44 @@ def _(calc_dHF, ocean_flux, ocean_flux_climo, pd, xr):
     dHF_all = calc_dHF(ocean_flux, ocean_flux_climo, climo_variables = [])
 
     dHF = xr.concat([dHF_all, dHF_wind, dHF_temp],
-                   dim = pd.Index(['All', 'Wind', 'Temperature'], name='Varied Fields'))
+                   dim = pd.Index(['All', 'Wind', 'Temperature'], name='Varied Fields')).compute()
     return (dHF,)
 
 
 @app.cell
-def _(T_series, calc_fdbk, dHF):
-    dHF_fdbk = calc_fdbk(dHF, T_series, yrs=30).chunk()
-    return
-
-
-@app.cell
 def _(dHF):
-    dHF
+    dHF['ql']
     return
 
 
 @app.cell
-def _(dHF_temp_window, dHF_wind_window, dHF_window, sst_idx, xs):
-    lh_wind_slope = xs.linslope(sst_idx, dHF_wind_window["ql"], dim="time")
-    lh_temp_slope = xs.linslope(sst_idx, dHF_temp_window["ql"], dim="time")
-    lh_all_slope = xs.linslope(sst_idx, dHF_window["ql"], dim="time")
+def _(T_series, calc_fdbk, dHF):
+    dHF_fdbk = calc_fdbk(dHF, T_series, yrs=30)
+    return (dHF_fdbk,)
 
-    sh_wind_slope = xs.linslope(sst_idx, dHF_wind_window["qh"], dim="time")
-    sh_temp_slope = xs.linslope(sst_idx, dHF_temp_window["qh"], dim="time")
-    sh_all_slope = xs.linslope(sst_idx, dHF_window["qh"], dim="time")
-    return (
-        lh_all_slope,
-        lh_temp_slope,
-        lh_wind_slope,
-        sh_temp_slope,
-        sh_wind_slope,
-    )
+
+@app.cell
+def _(dHF_fdbk, sst_idx, xs):
+    dHF_slope = xs.linslope(sst_idx, dHF_fdbk, dim='time')
+    return (dHF_slope,)
+
+
+@app.cell
+def _(dHF_slope, facetplot):
+    facetplot(dHF_slope['ql'], 'model', 'Varied Fields', vmin=-75, vmax=75, cmap='RdBu_r')
+    return
+
+
+@app.cell
+def _(dHF_slope, facetplot):
+    facetplot(-dHF_slope['qh'], 'model', 'Varied Fields', vmin=-75, vmax=75, cmap='RdBu_r')
+    return
+
+
+@app.cell
+def _(dHF_slope):
+    dHF_slope
+    return
 
 
 @app.cell
@@ -223,34 +300,6 @@ def _(ccrs, lh_slope, plt, rad_slope, sfc_slope, sh_slope, sst_slope):
 @app.cell
 def _(lh_all_slope):
     lh_all_slope.mean("model").plot(vmin=-50, vmax=50, extend="both", cmap="coolwarm")
-    return
-
-
-@app.cell
-def _(ocean_window, plt, sst_idx, xs):
-    xs.linslope(sst_idx,ocean_window["sfc"], dim="time").plot(col="model", robust=True)
-    plt.show()
-    return
-
-
-@app.cell
-def _(ocean_window, plt, sst_idx, xs):
-    xs.linslope(sst_idx,ocean_window["sfc_rad"], dim="time").plot(col="model", robust=True)
-    plt.show()
-    return
-
-
-@app.cell
-def _(ocean_window, plt, sst_idx, xs):
-    xs.linslope(sst_idx,-ocean_window["hfls"], dim="time").plot(col="model", robust=True)
-    plt.show()
-    return
-
-
-@app.cell
-def _(ocean_window, plt, sst_idx, xs):
-    xs.linslope(sst_idx,-ocean_window["hfss"], dim="time").plot(col="model", robust=True)
-    plt.show()
     return
 
 
