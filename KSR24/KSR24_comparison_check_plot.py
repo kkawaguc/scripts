@@ -15,14 +15,15 @@ def main():
     
     true_DLR = data['avg_sdlwrf']
     
-    est_DLR = xr.concat([DO98_UM75(data['t2m'], data['tcc'], data['tcwv']),
+    est_DLR = xr.concat([KSR24(data['t2m'], data['d2m'], data['tcwv'], data['sp'], data['tcc']),
+               DO98_UM75(data['t2m'], data['tcc'], data['tcwv']),
                C14(data['t2m'], data['rh'], data['tcc']),
                CN14(data['t2m'], data['vp'], data['tcc']),
                deK20(data['t2m'], data['avg_sdswrfcs'], data['rh']),
                SR21_BE23(data['t2m'], data['d2m'], data['tcwv'], data['sp'], data['rh']),
                B32_BE23(data['t2m'], data['d2m'], data['rh'])], dim='model')
     
-    est_DLR = est_DLR.assign_coords({'model':['DO98-UM75', 'C14', 'CN14', 'deK20',
+    est_DLR = est_DLR.assign_coords({'model':['KSR24', 'DO98-UM75', 'C14', 'CN14', 'deK20',
                                               'SR21-BE23', 'B32-BE23']})
     
     plot = (est_DLR.mean('valid_time')-true_DLR.mean('valid_time')).plot(col='model', col_wrap=3)
@@ -49,4 +50,4 @@ def main2():
     print(RMSE(true_DLR, est_DLR))
     return None
 
-main2()
+main()

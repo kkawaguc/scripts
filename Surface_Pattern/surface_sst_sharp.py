@@ -49,7 +49,7 @@ def _(calc_land_mask, np, xr):
     base_data['SFC'] = base_data['rsds'] + base_data['rlds'] - (base_data['rlus'] + base_data['rsus'] + 
                                                                             base_data['hfss'] + base_data['hfls'])
     base_data['SFCrad'] = base_data['rsds'] + base_data['rlds'] - (base_data['rlus'] + base_data['rsus'])
-    base_data['SFCrad_cs'] = base_data['rsds'] + base_data['rlds'] - (base_data['rlus'] + base_data['rsus'])
+    base_data['SFCrad_cs'] = base_data['rsdscs'] + base_data['rldscs'] - (base_data['rlus'] + base_data['rsuscs'])
 
     base_data['TOA_SWCRE'] = base_data['rsutcs'] - base_data['rsut']
     base_data['TOA_LWCRE'] = base_data['rlutcs'] - base_data['rlut']

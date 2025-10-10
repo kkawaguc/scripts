@@ -46,6 +46,7 @@ def tcwv_error(a, true_tcwv, dpt, lsm):
     est = tcwv_est(a, dpt, lsm)
     weights = np.cos(np.radians(true_tcwv.latitude))
     tcwv_mean = true_tcwv.weighted(weights).mean()
+    print(RMSE(est, true_tcwv)/tcwv_mean)
     return RMSE(est, true_tcwv)/tcwv_mean
 
 def main():
@@ -59,9 +60,9 @@ def main():
     random.seed(10)
     
     #Implement least squares for global minimum
-    res = sp.optimize.least_squares(error_function, x0=np.array([0.869, 0.823]), bounds=((0, 0), (1, 1)), 
-                                    args=(true_DLR, data['t2m'], data['d2m'], data['tcwv'], data['sp']))
-    print(res.x)
+    #res = sp.optimize.least_squares(error_function, x0=np.array([0.869, 0.823]), bounds=((0, 0), (1, 1)), 
+    #                                args=(true_DLR, data['t2m'], data['d2m'], data['tcwv'], data['sp']))
+    #print(res.x)
 
     #Implement least squares for global minimum
     res = sp.optimize.least_squares(tcwv_error, x0=np.array([-15.6, 0.0656, -14.3, 0.0605]), 

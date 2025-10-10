@@ -39,6 +39,19 @@ def vp2dpt(vp):
     b2 = 22.587-np.log(vp/611.21)
     return np.where(vp>610.94, a1/a2+273.15, b1/b2+273.15)
 
+def tcwv_est(dpt, lsm):
+    '''Estimates the total column water vapour using the equation from Reitan (1963).
+    Separate parameters for land and ocean.
+    Inputs:
+        dpt: dew point temperature (K)
+        lsm: land sea mask (0-1), 1 if land
+    Returns:
+        tcwv_est: estimate of the tcwv'''
+    land = xr.where(lsm > 0.5, True, False)
+    land_tcwv = np.exp(-15.6+0.06579*dpt)
+    ocean_tcwv = np.exp(-14.3+0.061*dpt)
+    return xr.where(land, land_tcwv, ocean_tcwv)
+
 def calc_specific_humidity(ps, dpt):
     '''Calculates specific humidity from the surface pressure and the
     dew point temperature.
@@ -253,6 +266,72 @@ def SR21_inversion(temp, dpt, tcwv, ps, ppm = 400):
 
     ps_eff = 0.7592*ps
     return SR21(temp_eff, dpt_eff, tcwv, ps_eff, theta=52.7, ppm=ppm)
+
+def calc_cloud_height(temp, RH):
+    '''Calculate the cloud height, assuming the atmospheric lapse rate is
+    equal to the dry adiabatic lapse rate of 9.8 K/km. Calculated from the
+    Clausius-Clapeyron saturation height.
+    Inputs:
+        temp: 2m temperature (K)
+        RH: near surface relative humidity (0-1)
+    Returns:
+        cb: estimated cloud base height (m)'''
+    Gamma = 6.5e-3  #Dry adiabatic lapse rate
+    M_w = 1.8016e-2 #Molar mass of water
+    L_v = 2.5e6     #Latent heat of vaporisation
+    R = 8.3145      #Ideal gas constant
+    cb = -np.log(RH)*R*(temp**2)/(L_v*M_w*Gamma)
+    cb = xr.where(cb < 0, 0, cb)
+    return cb
+
+def tcwv_adjustment(temp, dpt, ps, tcwv, cb):
+    '''Calculate the TCWV adjustment due to having a cloud.
+    Inputs:
+        temp: 2m temperature (K)
+        dpt: 2m dew point temperature (K)
+        ps: surface pressure (Pa)
+        tcwv: total column water vapor (kg/m^2)
+        cb: cloud base height (m)
+    Returns:
+        cwv_frac = fraction of column water below the cloud'''
+    q = calc_specific_humidity(ps, dpt)
+    M = 0.02897
+    R = 8.3145
+
+    rho = q * ps * M/(R * temp)
+    H = tcwv/rho
+
+    cwv_frac = (1 - np.exp(-cb/H))
+    return cwv_frac
+
+def KSR24(temp, dpt, tcwv, ps, cf, ppm=400):
+    '''Calculates the all-sky estimation from Kawaguchi et al. (2024),
+    with updated coefficients (area-weighted and including humidity in
+    the clear-sky inversion calculation, and assuming all clouds are
+    have 0.9 emissivity).'''
+    R = 8.3145
+    L_v = 2.5e6
+    M_w = 1.8016e-2
+
+    clear_sky = SR21_inversion(temp, dpt, tcwv, ps, ppm=ppm)
+
+    RH = calc_vapor_pressure(dpt)/calc_vapor_pressure(temp)
+    cb = calc_cloud_height(temp, RH)
+
+    cwv_fraction = tcwv_adjustment(temp, dpt, ps, tcwv, cb)
+    eff_cwv = tcwv*cwv_fraction
+
+    below_cloud = SR21(temp, dpt, eff_cwv, 0.7592*ps, theta=52.7, ppm=ppm)
+    below_cloud_emissivity = below_cloud/(sigma * temp ** 4)
+
+    cloud_temp  = temp + np.log(RH) * R * temp **2 / (L_v * M_w)
+    cloud_temp = xr.where(cloud_temp > temp, temp, cloud_temp)
+
+    cld_emiss = 0.9*(-1.214e-4*cb + 0.9884)       #0.889*np.exp(-cb/3970) + 0.0212
+    
+    cloud_layer = (1-below_cloud_emissivity) * sigma * cld_emiss * cloud_temp**4
+    return (1-cf) * clear_sky + cf * (below_cloud + cloud_layer)
+    
 
 def RMSE(est, true):
     '''Returns the root mean squared error
