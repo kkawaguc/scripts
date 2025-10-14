@@ -15,7 +15,7 @@ def main():
     
     true_DLR = data['avg_sdlwrf']
     
-    est_DLR = xr.concat([KSR24(data['t2m'], data['d2m'], data['tcwv'], data['sp'], data['tcc']),
+    est_DLR = xr.concat([KSR24(data['t2m'], data['d2m'], data['tcwv'], data['sp'], data['tcc'], data['lsm']),
                DO98_UM75(data['t2m'], data['tcc'], data['tcwv']),
                C14(data['t2m'], data['rh'], data['tcc']),
                CN14(data['t2m'], data['vp'], data['tcc']),
@@ -30,6 +30,7 @@ def main():
     plot.fig.savefig('test_plot.png')
     
     print(RMSE(true_DLR, est_DLR))
+    print((est_DLR-true_DLR).weighted(np.cos(np.radians(est_DLR.latitude))).mean(('valid_time', 'latitude', 'longitude')))
     #array([ 7.90113688,  7.23587302, 15.25444936,  9.41461849, 10.35658033,
     #    8.86408141])
     return None
@@ -40,14 +41,13 @@ def main2():
     data['vp'] = calc_vapor_pressure(data['d2m'])
     data['rh'] = data['vp']/data['vp_sat']
     
-    true_DLR = data['avg_sdlwrfcs']
+    true_DLR = data['avg_sdlwrf']
     
-    est_DLR = SR21(data['t2m'], data['d2m'], data['tcwv'], data['sp'])
-    
-    (est_DLR.mean('valid_time')-true_DLR.mean('valid_time')).plot()
-    #plot.savefig('test_plot2.png')
-    
-    print(RMSE(true_DLR, est_DLR))
+    alpha_set = np.linspace(0.85, 0.87, 21)
+    for alpha in alpha_set:
+        est_DLR = KSR24(data['t2m'], data['d2m'], data['tcwv'], data['sp'], data['tcc'], data['lsm'], alpha) #SR21(data['t2m'], data['d2m'], data['tcwv'], data['sp'])
+        print(alpha)
+        print(RMSE(true_DLR, est_DLR))
     return None
 
-main()
+main2()
