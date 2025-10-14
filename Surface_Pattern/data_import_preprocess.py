@@ -3,14 +3,16 @@ import os
 import numpy as np
 import cftime
 import scipy as sp
+import pandas as pd
 
 models = {"HadGEM3-GC31-LL": ["MOHC", "r1i1p1f*", "gn"], "CESM2":["NCAR", "r1i1p1f1", "gn"], "CanESM5":["CCCma", "r1i1p2f1", "gn"],
           "MRI-ESM2-0":["MRI", "r1i1p1f1", "gn"]}
-experiments = {"piControl":"CMIP","amip-piForcing":"CFMIP", "historical":"CMIP"}
-variables = ["rsut", "rlut", "rsds", "rlds", "rlus", "rsus", "hfss", "hfls", "tas", "huss", "ts", "ps", "uas", "vas"]
+experiments = {'piControl':'CMIP'}#{"amip-piForcing":"CFMIP"}
+variables =  ['rsut', 'hfls', 'ts']#["rsut", "rlut", "rsds", "rlds", "rlus", "rsus", "hfss", "hfls", "tas", "huss", "ts", "ps", "uas", "vas"]#, 
+             #'rsutcs', 'rlutcs', 'rsuscs', 'rsdscs', 'rldscs']
 
 def _preprocess(dataset):
-    dataset = dataset.resample({"time":"YS"}).mean()
+    #dataset = dataset.resample({"time":"MS"}).mean()
     long = dataset.lon
     dlon = np.diff(long).mean()  # average spacing
 
@@ -88,16 +90,17 @@ for exp in experiments:
                                             preprocess = _preprocess, use_cftime=True, decode_times=True)
             else:        
                 temp_ds = xr.open_mfdataset(file_path, engine="netcdf4", parallel=True, preprocess=_preprocess, use_cftime=True, decode_times=True)
-            if len(temp_ds.time) > 200:
-                temp_ds = temp_ds.isel({"time":slice(None, 200)})
-            if exp == "piControl":
-                temp_ds["time"] = xr.date_range(start="1850", periods=200, freq="YS", calendar="360_day", use_cftime=True)
+            if exp == 'piControl':
+                temp_ds = temp_ds.isel({"time":slice(None, 2400)})
+                temp_ds['time'] = pd.date_range(start='1850-01', periods=2400, freq='MS') 
             if exp == "amip-piForcing":
                 if mod == "CESM2":
                     temp_ds = temp_ds.isel({"time":slice(None, 145)})
-                temp_ds["time"] = xr.date_range(start="1870", periods=145, freq="YS", calendar="360_day", use_cftime=True)
+                temp_ds = temp_ds.resample({'time':'YS'}).mean()
+                temp_ds["time"] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
             if exp == "historical":
-                temp_ds["time"] = xr.date_range(start="1850", periods=165, freq="YS", calendar="360_day", use_cftime=True)
+                temp_ds = temp_ds.resample({'time':'YS'}).mean()
+                temp_ds["time"] = xr.date_range(start="1850", periods=165, freq="YS", use_cftime=True)
             if var == "rsut":
                 mod_ds = temp_ds
             else:

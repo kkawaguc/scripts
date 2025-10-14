@@ -78,7 +78,40 @@ def calc_fdbk(data, tas, yrs=30):
         return fdbk.chunk({'time':-1, 'lat':36, 'lon':36})
     else:
         return fdbk.compute()
-    
+
+
+def calc_Fueglistaler_idx_norm(ocean_ts):
+    '''Calculates the normalised Fueglistaler (2019) SST# time-series
+    Inputs:
+        Ocean_ts: Sea surface temperature
+    Returns:
+        Fueglistaler_idx_norm: Normalised SST#'''
+
+    tropical_SST = ocean_ts.sel({'lat':slice(-30, 30)}).compute()
+    weights = np.cos(np.radians(tropical_SST.lat))
+    Fueglistaler_threshold = tropical_SST.weighted(weights).quantile(0.7, dim=('lat', 'lon'))
+    Fueglistaler_idx_raw = xr.where(tropical_SST > Fueglistaler_threshold, tropical_SST, np.nan).weighted(weights).mean(('lat', 'lon')) - tropical_SST.weighted(weights).mean(('lat', 'lon'))
+
+    Fueglistaler_idx_norm = (Fueglistaler_idx_raw-Fueglistaler_idx_raw.mean('time'))/Fueglistaler_idx_raw.std(dim='time')
+    return Fueglistaler_idx_norm
+
+def calc_Fueglistaler_idx(ocean_ts):
+    '''Calculates the Fueglistaler (2019) SST# time-series
+    Inputs:
+        Ocean_ts: Sea surface temperature
+    Returns:
+        Fueglistaler_idx: SST#'''
+
+    tropical_SST = ocean_ts.sel({'lat':slice(-30, 30)}).compute()
+    weights = np.cos(np.radians(tropical_SST.lat))
+    Fueglistaler_threshold = tropical_SST.weighted(weights).quantile(0.7, dim=('lat', 'lon'))
+    Fueglistaler_idx = xr.where(tropical_SST > Fueglistaler_threshold, tropical_SST, np.nan).weighted(weights).mean(('lat', 'lon')) - tropical_SST.weighted(weights).mean(('lat', 'lon'))
+    return Fueglistaler_idx
+
+def remove_time_mean(x):
+    '''Remove time mean for purposes of applying climatology removal'''
+    return x - x.mean(dim='time')
+
 def facetplot(data, dims_to_reduce=None, facet_dim=None, title='', **kwargs):
     """
     Plotting routine for a facetplot.
