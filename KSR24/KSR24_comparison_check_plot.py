@@ -29,6 +29,8 @@ def main():
     plot = (est_DLR.mean('valid_time')-true_DLR.mean('valid_time')).plot(col='model', col_wrap=3)
     plot.fig.savefig('test_plot.png')
     
+    plot_histogram(est_DLR, true_DLR, 'parameterisation.png', globe=True)
+
     print(RMSE(true_DLR, est_DLR))
     print((est_DLR-true_DLR).weighted(np.cos(np.radians(est_DLR.latitude))).mean(('valid_time', 'latitude', 'longitude')))
     #array([ 7.90113688,  7.23587302, 15.25444936,  9.41461849, 10.35658033,
@@ -50,4 +52,4 @@ def main2():
         print(RMSE(true_DLR, est_DLR))
     return None
 
-main2()
+main()

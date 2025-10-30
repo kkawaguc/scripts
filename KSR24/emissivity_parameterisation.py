@@ -51,6 +51,5 @@ def main():
     fig.savefig('emissivity_plot.png')
     return None
 
-#result is -1.214e-4 * cb + 0.9884
 main()
 
