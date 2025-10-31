@@ -7,6 +7,7 @@ import scipy.interpolate as interpolate
 import scipy.stats as stats
 import matplotlib.colors as colors
 import datetime as dt
+import cartopy.crs as ccrs
 from KSR24_functions import *
 
 def _preprocess(dataset):
@@ -23,6 +24,18 @@ def isccp_data_retrieval():
     all_2016 = xr.open_mfdataset('/gws/nopw/j04/csgap/kkawaguchi/isccp/hgg_data/2016*/*.nc', engine='netcdf4', preprocess=_preprocess, parallel=True)
     jan_2017 = xr.open_mfdataset('/gws/nopw/j04/csgap/kkawaguchi/isccp/hgg_data/201701/*.nc', engine='netcdf4', preprocess=_preprocess, parallel=True)
     cloud_data = xr.concat([dec_2010, all_2011, all_2012, all_2013, all_2014, all_2015, all_2016, jan_2017], dim='time')
+
+    cloud_data = cloud_data['cldamt']
+    cloud_data = cloud_data.pad({'lon':2}, 'wrap')
+    cloud_data = cloud_data.assign_coords({'lon':np.linspace(-1.5, 361.5, 364)})
+
+    cloud_data = xr.where(cloud_data <= 100, cloud_data, np.nan)
+    cloud_data = xr.where(cloud_data >= 0, cloud_data, np.nan)
+
+    cloud_data = cloud_data.rio.write_nodata(np.nan)
+    cloud_data = cloud_data.rio.set_spatial_dims(x_dim='lon', y_dim='lat')
+    cloud_data = cloud_data.rio.write_crs(ccrs.PlateCarree())
+    cloud_data = cloud_data.rio.interpolate_na(method='linear')
     return cloud_data.compute()
 
 def data_cleaning(data):
@@ -87,10 +100,10 @@ def main():
 
     print(len(data))
     cloud_data = isccp_data_retrieval()
-    
+
     print('cloud data loaded')
 
-    cf_vals = cloud_data['cldamt'].values
+    cf_vals = cloud_data.values
     cf_time = cloud_data.time.to_numpy()
     cf_lat = cloud_data.lat.to_numpy()
     cf_lon = cloud_data.lon.to_numpy()

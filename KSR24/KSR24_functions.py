@@ -492,7 +492,7 @@ def plot_main3(estimates, true_DLR, temp_data, pressure_data, plot_name='', glob
         ax[1].set_ylim([0, 60])
     
         n3 = xhist.histogram(pressure_data, bins=P_bins, weights=loc_weights.fillna(0), block_size=15000000)
-        sy3 = np.histogram(pressure_data, bins=P_bins, weights=(error**2 * loc_weights).fillna(0), block_size=15000000)
+        sy3 = xhist.histogram(pressure_data, bins=P_bins, weights=(error**2 * loc_weights).fillna(0), block_size=15000000)
 
         a = sy3/n3
         mask = np.isnan(a)
