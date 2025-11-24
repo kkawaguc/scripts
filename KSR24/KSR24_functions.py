@@ -301,13 +301,15 @@ def tcwv_adjustment(temp, dpt, ps, tcwv, cb):
     cwv_frac = (1 - np.exp(-cb/H))
     return cwv_frac
 
-def KSR24(temp, dpt, tcwv, ps, cf, lsm, ppm=400):
+def KSR24(temp, dpt, ps, cf, lsm, ppm=400):
     '''Calculates the all-sky estimation from Kawaguchi et al. (2024),
     with updated coefficients (area-weighted and including humidity in
     the clear-sky inversion calculation, and calculating ).'''
     R = 8.3145
     L_v = 2.5e6
     M_w = 1.8016e-2
+
+    tcwv = tcwv_est(dpt, lsm)
 
     clear_sky = SR21_inversion(temp, dpt, tcwv, ps, ppm=ppm)
 
@@ -323,13 +325,14 @@ def KSR24(temp, dpt, tcwv, ps, cf, lsm, ppm=400):
     cloud_temp  = temp + np.log(RH) * R * temp **2 / (L_v * M_w)
     cloud_temp = xr.where(cloud_temp > temp, temp, cloud_temp)
 
-    land_cld_emiss = 0.9389 - 1.113e-4*cb
-    ocean_cld_emiss = 1.011 - 1.745e-4*cb
+    #land_cld_emiss = 0.9389 - 1.113e-4*cb
+    #ocean_cld_emiss = 1.011 - 1.745e-4*cb
 
-    cld_emiss = land_cld_emiss * lsm + ocean_cld_emiss * (1-lsm)
-    cld_emiss = xr.where(cld_emiss < 0, 0, cld_emiss)
+    #cld_emiss = land_cld_emiss * lsm + ocean_cld_emiss * (1-lsm)
+    #cld_emiss = xr.where(cld_emiss < 0, 0, cld_emiss)
 
-    cld_emiss = 0.8705 * cld_emiss
+    #cld_emiss = 0.8705 * cld_emiss
+    cld_emiss = 0.844 * (1.03*np.exp(-cb/4470) + 0.01574) #xr.where(cb >= 7409, 0.09157, -1.169e-4*cb + 0.09157+1.169e-04*7409)
 
     cloud_layer = (1-below_cloud_emissivity) * sigma * cld_emiss * cloud_temp**4
     return (1-cf) * clear_sky + cf * (below_cloud + cloud_layer)
@@ -515,5 +518,5 @@ def plot_main3(estimates, true_DLR, temp_data, pressure_data, plot_name='', glob
     ax[2].grid()
 
     fig.legend(model_names_cut, bbox_to_anchor=[1.1, 0.5], loc="center left")
-    fig.figsave('Plots/' + plot_name)
+    fig.savefig('Plots/' + plot_name)
     return None

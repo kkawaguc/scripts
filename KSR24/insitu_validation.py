@@ -9,6 +9,7 @@ import matplotlib.colors as colors
 import datetime as dt
 import cartopy.crs as ccrs
 from KSR24_functions import *
+import rioxarray
 
 def _preprocess(dataset):
     return dataset['cldamt'].sel({'lat':slice(-72, 83)})
@@ -79,48 +80,50 @@ def data_cleaning(data):
     return data_new
 
 def main():
-    FLX_data = pd.read_csv('/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/FLX_data_11_16.csv')
-    BSRN_data = pd.read_csv('/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/BSRN_data_11_16.csv')
-    FLX_data = FLX_data.drop(columns = ['Unnamed: 0', 'VPD_F', 'SAT_VAP'])
-    BSRN_data = BSRN_data.drop(columns = ['Unnamed: 0', 'Unnamed: 0.1'])
+    #FLX_data = pd.read_csv('/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/FLX_data_11_16.csv')
+    #BSRN_data = pd.read_csv('/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/BSRN_data_11_16.csv')
+    #FLX_data = FLX_data.drop(columns = ['Unnamed: 0', 'VPD_F', 'SAT_VAP'])
+    #BSRN_data = BSRN_data.drop(columns = ['Unnamed: 0', 'Unnamed: 0.1'])
     
-    print(len(FLX_data))
-    print(len(BSRN_data))
+    #print(len(FLX_data))
+    #print(len(BSRN_data))
 
-    data = pd.concat([FLX_data, BSRN_data], axis=0, ignore_index=True)
+    #data = pd.concat([FLX_data, BSRN_data], axis=0, ignore_index=True)
     
-    data = data.dropna(axis=0, how='any')
+    #data = data.dropna(axis=0, how='any')
 
-    print(len(data))
-    data["TIMESTAMP_START"] = data["TIMESTAMP_START"].apply(lambda x: dt.datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
+    #print(len(data))
+    #data["TIMESTAMP_START"] = data["TIMESTAMP_START"].apply(lambda x: dt.datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
 
-    data['LONG_360'] = data['LONG'].where(data['LONG'] > 0, data['LONG']+360)
+    #data['LONG_360'] = data['LONG'].where(data['LONG'] > 0, data['LONG']+360)
 
-    data = data_cleaning(data)
+    #data = data_cleaning(data)
 
-    print(len(data))
-    cloud_data = isccp_data_retrieval()
+    #data.to_csv('insitu_validation_data_cleaned.csv')
 
-    print('cloud data loaded')
+    #print(len(data))
+    #cloud_data = isccp_data_retrieval()
 
-    cf_vals = cloud_data.values
-    cf_time = cloud_data.time.to_numpy()
-    cf_lat = cloud_data.lat.to_numpy()
-    cf_lon = cloud_data.lon.to_numpy()
+    #print('cloud data loaded')
 
-    print(np.shape(cf_vals))
-    print(cf_vals[0:2, 0:2, 0:2])
+    #cf_vals = cloud_data.values
+    #cf_time = cloud_data.time.to_numpy()
+    #cf_lat = cloud_data.lat.to_numpy()
+    #cf_lon = cloud_data.lon.to_numpy()
 
-    data['CF_est'] = interpolate.interpn((cf_time, cf_lat, cf_lon), cf_vals, 
-                                         (data["TIMESTAMP_START"], data["LAT"], data["LONG_360"]), bounds_error=False)
+    #print(np.shape(cf_vals))
+    #print(cf_vals[0:2, 0:2, 0:2])
+
+    #data['CF_est'] = interpolate.interpn((cf_time, cf_lat, cf_lon), cf_vals, 
+    #                                     (data["TIMESTAMP_START"], data["LAT"], data["LONG_360"]), bounds_error=False)
     
-    data['CF_est_frac'] = data['CF_est'] / 100
+    #data['CF_est_frac'] = data['CF_est'] / 100
 
-    print('cloud fraction estimated')
+    #print('cloud fraction estimated')
     #We restrict the cloud fraction to between 0-1 and downwelling shortwave (used to switch between regimes for de Kok (2020)) does not exceed the clear-sky
     #downwelling shortwave
 
-    data.to_csv('insitu_validation_cfestimated.csv')    
+    #data.to_csv('insitu_validation_cfestimated.csv')    
 
     data = pd.read_csv('insitu_validation_cfestimated.csv') 
 
@@ -131,7 +134,7 @@ def main():
 
     print('starting DLR estimation')
 
-    KSR24_results = KSR24(data['TA_F'], data['DPT'], data['TCWV'], data['PA_F'], data['CF_est_frac'], 1)
+    KSR24_results = KSR24(data['TA_F'], data['DPT'], data['PA_F'], data['CF_est_frac'], 1)
     DO98UM75_results = DO98_UM75(data['TA_F'], data['CF_est_frac'], data['TCWV'])
     C14_results = C14(data['TA_F'], data['RH'], data['CF_est_frac'])
     CN14_results = CN14(data['TA_F'], data['VP'], data['CF_est_frac'])
