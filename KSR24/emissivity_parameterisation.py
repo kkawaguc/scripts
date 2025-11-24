@@ -5,49 +5,45 @@ import xhistogram.xarray as xhist
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import scipy.stats as stats
+from scipy.optimize import curve_fit
+
+def emiss_fit(x, a, b, c):
+    return a*np.exp(-x/b) + c
+
+def piecewise_linear(x, x0,y0, k1):
+    return xr.where(x >= x0, y0, k1*x + y0-k1*x0)
 
 def main():
-    data = xr.open_mfdataset("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/*.nc", engine="netcdf4").resample({'valid_time':'MS'}).mean().compute()
-    
-    data['RH'] = calc_vapor_pressure(data['d2m'])/calc_vapor_pressure(data['t2m'])
-    data['z_cb'] = calc_cloud_height(data['t2m'], data['RH'])
+    data = xr.open_dataset("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/hourly/lwp_and_cbh.nc", engine="netcdf4")
     data['emissivity'] = (1-(np.exp(-158*data['tclw'])))
 
     lat_weights = np.cos(np.radians(data.latitude))
 
-    land_histogram = xhist.histogram(data['z_cb'], data['emissivity'], bins=30,weights=lat_weights * data['lsm'], block_size=None)
-    ocean_histogram = xhist.histogram(data['z_cb'], data['emissivity'], bins=30,weights=lat_weights *(1- data['lsm']), block_size=None)
-    land_histo_numbers = xhist.histogram(data['z_cb'], bins=30, weights=lat_weights*data['lsm'], block_size=None)
-    ocean_histo_numbers = xhist.histogram(data['z_cb'], bins=30, weights=lat_weights*(1-data['lsm']), block_size=None)
+    histogram = xhist.histogram(data['cbh'], data['emissivity'], bins=30, weights=lat_weights,range=[[0, 17000], [0,1]], block_size=None)
+    histo_numbers = xhist.histogram(data['cbh'], bins=30, weights=lat_weights, range=[0, 17000], block_size=None)
 
-    land_emissivity_weights = land_histogram * land_histogram.emissivity_bin
-    ocean_emissivity_weights = ocean_histogram * ocean_histogram.emissivity_bin
+    emissivity_weights = histogram * histogram.emissivity_bin
 
-    land_mean_emissivity = land_emissivity_weights.sum(dim='emissivity_bin')/land_histo_numbers
-    ocean_mean_emissivity = ocean_emissivity_weights.sum(dim='emissivity_bin')/ocean_histo_numbers
+    mean_emissivity = emissivity_weights.sum(dim='emissivity_bin')/histo_numbers
     
-    land_regression = stats.linregress(land_histo_numbers.z_cb_bin, land_mean_emissivity)
-    ocean_regression = stats.linregress(ocean_histo_numbers.z_cb_bin.sel({'z_cb_bin':slice(None, 5000)}), ocean_mean_emissivity.sel({'z_cb_bin':slice(None, 5000)}))
-    x = np.linspace(0, 7000, 50)
+    from scipy.optimize import curve_fit
 
-    print(land_regression.slope)
-    print(land_regression.intercept)
-    print(land_regression.rvalue)
+    popt, pcov = curve_fit(emiss_fit, histo_numbers.cbh_bin, mean_emissivity, p0=[1, 4000, 0])
 
-    print(ocean_regression.slope)
-    print(ocean_regression.intercept)
-    print(ocean_regression.rvalue)
+    ptest, ptestcov = curve_fit(piecewise_linear, histo_numbers.cbh_bin, mean_emissivity, p0=[8000, 0.1, 1e-4])
 
-    fig, ax = plt.subplots(2, 1, layout='constrained')
-    land_histogram.T.plot(ax=ax[0], norm=colors.LogNorm(vmin=0.1))
-    ax[0].scatter(land_histo_numbers.z_cb_bin, land_mean_emissivity,c='m')
-    ax[0].plot(x, land_regression.slope * x + land_regression.intercept, 'red')
-    ax[0].set_title('Land')
+    #regression = stats.linregress(histo_numbers.cbh_bin, mean_emissivity)
+    x = np.linspace(0, 17000, 100)
 
-    ocean_histogram.T.plot(ax=ax[1], norm=colors.LogNorm(vmin=0.1))
-    ax[1].scatter(ocean_histo_numbers.z_cb_bin, ocean_mean_emissivity, c='m')
-    ax[1].plot(x, ocean_regression.slope * x + ocean_regression.intercept, 'red')
-    ax[1].set_title('Ocean')
+    print(popt)
+    print(ptest)
+
+    fig, ax = plt.subplots(1, 1, layout='constrained')
+    histogram.T.plot(ax=ax, norm=colors.LogNorm(vmin=0.1))
+    ax.scatter(histo_numbers.cbh_bin, mean_emissivity,c='m')
+    ax.plot(x, popt[0]*np.exp(-x/popt[1])+popt[2], 'red')
+    ax.plot(x, piecewise_linear(x, ptest[0], ptest[1], ptest[2]))
+    ax.set_title('Emissivity Parameterisation')
     fig.savefig('emissivity_plot.png')
     return None
 
