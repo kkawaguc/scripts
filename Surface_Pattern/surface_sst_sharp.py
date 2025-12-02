@@ -19,7 +19,7 @@ def importpackages():
     import xskillscore as xs
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
-    from functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
+    from Surface_Pattern.CMIP6_analysis_functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
     import pandas as pd
     import xrscipy
     return (
@@ -54,7 +54,7 @@ def _(calc_land_mask, np, xr):
     base_data['TOA_SWCRE'] = base_data['rsutcs'] - base_data['rsut']
     base_data['TOA_LWCRE'] = base_data['rlutcs'] - base_data['rlut']
 
-    base_data['SFC_SWCRE'] = base_data['rsds'] - base_data['rsdscs']
+    base_data['SFC_SWCRE'] = base_data['rsds'] - base_data['rsdscs'] - base_data['rsus'] + base_data['rsuscs']
     base_data['SFC_LWCRE'] = base_data['rlds'] - base_data['rldscs']
 
     #Regrid to calculate the land mask
@@ -90,13 +90,33 @@ def _(base_data, sst_idx, xs):
 
 
 @app.cell
+def _(base_data, sst_idx, xs):
+    flux_resp_models = xs.linslope(sst_idx, base_data, dim='time')
+    return (flux_resp_models,)
+
+
+@app.cell
+def _(flux_resp_models, plt):
+    flux_resp_models['SFCrad'].plot(col='model')
+    plt.show()
+    return
+
+
+@app.cell
+def _(flux_resp_models, plt):
+    (-flux_resp_models['hfls']).plot(col='model', vmin=-5, vmax=5, cmap='RdBu_r')
+    plt.show()
+    return
+
+
+@app.cell
 def _(ccrs, flux_response, plt):
     ## Plot the TOA, Surface and Atmospheric Energy budgets
     fig1, ax1 = plt.subplots(1, 3, figsize=(12, 3), layout='constrained', subplot_kw={'projection':ccrs.Robinson(central_longitude=180)})
 
-    flux_response['TOA'].plot(ax=ax1[0], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, cmap='RdBu_r',extend='both', add_colorbar=False)
-    flux_response['SFC'].plot(ax=ax1[1], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, cmap='RdBu_r',extend='both', add_colorbar=False)
-    (flux_response['SFC'] - flux_response['TOA']).plot(ax=ax1[2], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, 
+    flux_response['TOA'].plot(ax=ax1[0], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, cmap='RdBu_r',extend='both', add_colorbar=False)
+    flux_response['SFC'].plot(ax=ax1[1], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, cmap='RdBu_r',extend='both', add_colorbar=False)
+    (flux_response['SFC'] - flux_response['TOA']).plot(ax=ax1[2], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, 
                                                        cmap='RdBu_r', extend='both', 
                                                        cbar_kwargs={'shrink':0.8, 'label': '$\\mathrm{W m^{-2}/\\sigma}$'})
 
@@ -118,12 +138,12 @@ def _(ccrs, flux_response, plt):
     ## Plot the TOA Energy budget and decomposition
     fig2, ax2 = plt.subplots(2, 2, figsize=(8, 5), layout='constrained', subplot_kw={'projection':ccrs.Robinson(central_longitude=180)})
 
-    cbar2 = flux_response['TOA'].plot(ax=ax2[0,0], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, cmap='RdBu_r',extend='both', add_colorbar=False)
-    flux_response['TOA_cs'].plot(ax=ax2[0,1], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, 
+    cbar2 = flux_response['TOA'].plot(ax=ax2[0,0], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, cmap='RdBu_r',extend='both', add_colorbar=False)
+    flux_response['TOA_cs'].plot(ax=ax2[0,1], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, 
                                  cmap='RdBu_r',extend='both', add_colorbar=False)
-    flux_response['TOA_SWCRE'].plot(ax=ax2[1,0], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, 
+    flux_response['TOA_SWCRE'].plot(ax=ax2[1,0], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, 
                                     cmap='RdBu_r', extend='both', add_colorbar=False)
-    flux_response['TOA_LWCRE'].plot(ax=ax2[1,1], transform=ccrs.PlateCarree(), vmin=-5, vmax=5, 
+    flux_response['TOA_LWCRE'].plot(ax=ax2[1,1], transform=ccrs.PlateCarree(), vmin=-3, vmax=3, 
                                     cmap='RdBu_r', extend='both', add_colorbar=False)
 
     fig2.colorbar(ax = ax2[:], mappable=cbar2, 
@@ -183,9 +203,9 @@ def _(ccrs, flux_response, plt):
     fig4, ax4 = plt.subplots(1, 2, figsize=(8, 3), layout='constrained', subplot_kw={'projection':ccrs.Robinson(central_longitude=180)})
 
     (flux_response['TOA_SWCRE'] + flux_response['TOA_LWCRE']).plot(ax=ax4[0], transform=ccrs.PlateCarree(), 
-                                                                   vmin=-5, vmax=5, cmap='RdBu_r',extend='both', add_colorbar=False)
+                                                                   vmin=-3, vmax=3, cmap='RdBu_r',extend='both', add_colorbar=False)
     (flux_response['SFC_SWCRE'] + flux_response['SFC_LWCRE']).plot(ax=ax4[1], transform=ccrs.PlateCarree(), 
-                                                                   vmin=-5, vmax=5, cmap='RdBu_r',extend='both',
+                                                                   vmin=-3, vmax=3, cmap='RdBu_r',extend='both',
                                                                    cbar_kwargs={'shrink':0.8, 'label': '$\\mathrm{W m^{-2}/\\sigma}$'})
 
     ax4[0].set_title('TOA')
@@ -226,11 +246,49 @@ def _(T_series, base_data, calc_fdbk):
 
 
 @app.cell
+def _(T_series, base_data, calc_fdbk, plt, weights):
+    sfc_rad_fdbk = calc_fdbk(base_data['SFCrad'], T_series)
+    sfc_rad_fdbk.weighted(weights).mean(('lat', 'lon')).plot.line(x='time')
+    plt.title('Surface Radiative Fdbk ($\\mathrm{W/m^2/K}$)')
+    plt.ylim([-0.5, 3.5])
+    plt.show()
+    return (sfc_rad_fdbk,)
+
+
+@app.cell
+def _(sfc_fdbk, sfc_rad_fdbk, weights, xr):
+    xr.corr(sfc_fdbk.weighted(weights).mean(('lat', 'lon')), sfc_rad_fdbk.weighted(weights).mean(('lat', 'lon')), dim='time').compute()
+    return
+
+
+@app.cell
+def _(sst_idx):
+    sst_idx.plot.line(x='time')
+    return
+
+
+@app.cell
+def _(T_series, base_data, calc_fdbk, plt, weights):
+    sfc_turb_fdbk = calc_fdbk(-(base_data['hfls']), T_series)
+    sfc_turb_fdbk.weighted(weights).mean(('lat', 'lon')).plot.line(x='time')
+    plt.title('Surface Turbulent Fdbk ($\\mathrm{W/m^2/K}$)')
+    plt.ylim([-4.5, -0.5])
+    plt.show()
+    return (sfc_turb_fdbk,)
+
+
+@app.cell
 def _(plt, sfc_fdbk, weights):
     sfc_fdbk.weighted(weights).mean(('lat', 'lon')).plot.line(x='time')
     plt.title('Surface Fdbk ($\\mathrm{W/m^2/K}$)')
     plt.ylim([-3.5, 0.5])
     plt.show()
+    return
+
+
+@app.cell
+def _(sfc_fdbk, sfc_turb_fdbk, weights, xr):
+    xr.corr(sfc_fdbk.weighted(weights).mean(('lat', 'lon')), sfc_turb_fdbk.weighted(weights).mean(('lat', 'lon')), dim='time').compute()
     return
 
 
@@ -320,7 +378,19 @@ def _(facetplot, ocean_slope):
 
 @app.cell
 def _(facetplot, ocean_slope):
-    facetplot(-ocean_slope['hfss'], 'model', None, title='Sensible Heat',vmin=-4, vmax=4, extend='both',cmap='RdBu_r', figsize=(6,3))
+    facetplot(-ocean_slope['hfls'], 'model', None, title='Latent Heat',vmin=-4, vmax=4, extend='both',cmap='RdBu_r', figsize=(6,3))
+    return
+
+
+@app.cell
+def _(ocean_slope, plt):
+    (-ocean_slope['hfls']).plot(col='model', vmin=-5, vmax=5, cmap='RdBu_r')
+    plt.show()
+    return
+
+
+@app.cell
+def _():
     return
 
 
@@ -366,8 +436,20 @@ def _(dHF_slope, facetplot):
 
 
 @app.cell
+def _(dHF_slope, plt):
+    dHF_slope['ql'].plot(col='Varied Fields', row='model', figsize=(12, 8), vmin=-5, vmax=5, cmap='RdBu_r')
+    plt.show()
+    return
+
+
+@app.cell
 def _(dHF_slope, facetplot):
-    facetplot(dHF_slope['qh'], 'model', 'Varied Fields', vmin=-4, vmax=4, cmap='RdBu_r')
+    facetplot(dHF_slope['qh'], 'model', 'Varied Fields', vmin=-1, vmax=1, cmap='RdBu_r')
+    return
+
+
+@app.cell
+def _():
     return
 
 

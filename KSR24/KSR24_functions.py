@@ -301,7 +301,7 @@ def tcwv_adjustment(temp, dpt, ps, tcwv, cb):
     cwv_frac = (1 - np.exp(-cb/H))
     return cwv_frac
 
-def KSR24(temp, dpt, ps, cf, lsm, ppm=400):
+def KSR24(temp, dpt, ps, cf, lsm, ppm=400, alpha=1):
     '''Calculates the all-sky estimation from Kawaguchi et al. (2024),
     with updated coefficients (area-weighted and including humidity in
     the clear-sky inversion calculation, and calculating ).'''
@@ -314,7 +314,7 @@ def KSR24(temp, dpt, ps, cf, lsm, ppm=400):
     clear_sky = SR21_inversion(temp, dpt, tcwv, ps, ppm=ppm)
 
     RH = calc_vapor_pressure(dpt)/calc_vapor_pressure(temp)
-    cb = calc_cloud_height(temp, RH)
+    cb = lcl(ps, temp, rh=RH)
 
     cwv_fraction = tcwv_adjustment(temp, dpt, ps, tcwv, cb)
     eff_cwv = tcwv*cwv_fraction
@@ -322,8 +322,7 @@ def KSR24(temp, dpt, ps, cf, lsm, ppm=400):
     below_cloud = SR21(temp, dpt, eff_cwv, 0.7592*ps, theta=52.7, ppm=ppm)
     below_cloud_emissivity = below_cloud/(sigma * temp ** 4)
 
-    cloud_temp  = temp + np.log(RH) * R * temp **2 / (L_v * M_w)
-    cloud_temp = xr.where(cloud_temp > temp, temp, cloud_temp)
+    cloud_temp  = temp - 9.8e-3*cb
 
     #land_cld_emiss = 0.9389 - 1.113e-4*cb
     #ocean_cld_emiss = 1.011 - 1.745e-4*cb
@@ -332,10 +331,101 @@ def KSR24(temp, dpt, ps, cf, lsm, ppm=400):
     #cld_emiss = xr.where(cld_emiss < 0, 0, cld_emiss)
 
     #cld_emiss = 0.8705 * cld_emiss
-    cld_emiss = 0.844 * (1.03*np.exp(-cb/4470) + 0.01574) #xr.where(cb >= 7409, 0.09157, -1.169e-4*cb + 0.09157+1.169e-04*7409)
+    cld_emiss = 0.894 * xr.where(cb >= 9291, 0.1165, -8.88e-5*cb + 0.1165+8.88e-5*9291)
 
     cloud_layer = (1-below_cloud_emissivity) * sigma * cld_emiss * cloud_temp**4
     return (1-cf) * clear_sky + cf * (below_cloud + cloud_layer)
+
+def lcl(p,T,rh=None,rhl=None,rhs=None,return_ldl=False,return_min_lcl_ldl=False):
+   #Adapted from Romps (2017) to include xarray dataarrays in the input
+   import math
+   import scipy.special
+
+   # Parameters
+   Ttrip = 273.16     # K
+   ptrip = 611.65     # Pa
+   E0v   = 2.3740e6   # J/kg
+   E0s   = 0.3337e6   # J/kg
+   ggr   = 9.81       # m/s^2
+   rgasa = 287.04     # J/kg/K 
+   rgasv = 461        # J/kg/K 
+   cva   = 719        # J/kg/K
+   cvv   = 1418       # J/kg/K 
+   cvl   = 4119       # J/kg/K 
+   cvs   = 1861       # J/kg/K 
+   cpa   = cva + rgasa
+   cpv   = cvv + rgasv
+
+   # The saturation vapor pressure over liquid water
+   def pvstarl(T):
+      return ptrip * (T/Ttrip)**((cpv-cvl)/rgasv) * \
+         np.exp( (E0v - (cvv-cvl)*Ttrip) / rgasv * (1/Ttrip - 1/T) )
+   
+   # The saturation vapor pressure over solid ice
+   def pvstars(T):
+      return ptrip * (T/Ttrip)**((cpv-cvs)/rgasv) * \
+         np.exp( (E0v + E0s - (cvv-cvs)*Ttrip) / rgasv * (1/Ttrip - 1/T) )
+
+   # Calculate pv from rh, rhl, or rhs
+   rh_counter = 0
+   if rh  is not None:
+      rh_counter = rh_counter + 1
+   if rhl is not None:
+      rh_counter = rh_counter + 1
+   if rhs is not None:
+      rh_counter = rh_counter + 1
+   if rh_counter != 1:
+      print(rh_counter)
+      exit('Error in lcl: Exactly one of rh, rhl, and rhs must be specified')
+   if rh is not None:
+      # The variable rh is assumed to be 
+      # with respect to liquid if T > Ttrip and 
+      # with respect to solid if T < Ttrip
+      pv = xr.where(T > Ttrip, rh * pvstarl(T), rh * pvstars(T))
+      rhl = pv / pvstarl(T)
+      rhs = pv / pvstars(T)
+   elif rhl is not None:
+      pv = rhl * pvstarl(T)
+      rhs = pv / pvstars(T)
+      if T > Ttrip:
+         rh = rhl
+      else:
+         rh = rhs
+   elif rhs is not None:
+      pv = rhs * pvstars(T)
+      rhl = pv / pvstarl(T)
+      if T > Ttrip:
+         rh = rhl
+      else:
+         rh = rhs
+   #if pv > p:
+   #   return NA
+
+   # Calculate lcl_liquid and lcl_solid
+   qv = rgasa*pv / (rgasv*p + (rgasa-rgasv)*pv)
+   rgasm = (1-qv)*rgasa + qv*rgasv
+   cpm = (1-qv)*cpa + qv*cpv
+   aL = -(cpv-cvl)/rgasv + cpm/rgasm
+   bL = -(E0v-(cvv-cvl)*Ttrip)/(rgasv*T)
+   cL = pv/pvstarl(T)*np.exp(-(E0v-(cvv-cvl)*Ttrip)/(rgasv*T))
+   aS = -(cpv-cvs)/rgasv + cpm/rgasm
+   bS = -(E0v+E0s-(cvv-cvs)*Ttrip)/(rgasv*T)
+   cS = pv/pvstars(T)*np.exp(-(E0v+E0s-(cvv-cvs)*Ttrip)/(rgasv*T))
+   lcl = cpm*T/ggr*( 1 - \
+      bL/(aL*scipy.special.lambertw(bL/aL*cL**(1/aL),-1).real) )
+   ldl = cpm*T/ggr*( 1 - \
+      bS/(aS*scipy.special.lambertw(bS/aS*cS**(1/aS),-1).real) )
+
+   # Return either lcl or ldl
+   if return_ldl and return_min_lcl_ldl:
+      exit('return_ldl and return_min_lcl_ldl cannot both be true')
+   elif return_ldl:
+      return ldl
+   elif return_min_lcl_ldl:
+      return min(lcl,ldl)
+   else:
+      return xr.where(rh == 0, cpm*T/ggr, lcl)
+
 
 def round_to_sig_figs(num, sig_figs):
     if num != 0:
@@ -374,7 +464,6 @@ def plot_histogram(estimates, true_DLR, plot_name='', globe=True):
 
     for i in range(len(estimates)):
         error = estimates[i] - true_DLR
-        print(error.head())
         RMSE = round_to_sig_figs(float(np.sqrt((error**2).weighted(weights).mean())), 3)
         MBE = round_to_sig_figs(float(error.weighted(weights).mean()), 3)
         r = round_to_sig_figs(float(xr.corr(estimates[i], true_DLR, weights=weights)), 3)

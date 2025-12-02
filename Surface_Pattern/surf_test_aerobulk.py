@@ -19,7 +19,7 @@ def importpackages():
     import xskillscore as xs
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
-    from functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
+    from Surface_Pattern.CMIP6_analysis_functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
     import pandas as pd
     return (
         calc_dHF,

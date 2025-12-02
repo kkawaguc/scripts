@@ -21,7 +21,7 @@ cb = SocratesCodeBase.from_directory(GFDL_BASE)
 
 # create an Experiment object to handle the configuration of model parameters
 # and output diagnostics
-exp = Experiment('Greens_function_control', codebase=cb)
+exp = Experiment(os.getenv('exp_name'), codebase=cb)
 
 # Tell model how to write diagnostics
 diag = DiagTable()
@@ -113,7 +113,7 @@ exp.clear_rundir()
 
 exp.inputfiles = [os.path.join(GFDL_BASE, 'input/rrtm_input_files/ozone_1990.nc'),
                   os.path.join(GFDL_BASE, 'input/land_masks/era_land_t42_filtered.nc'),
-                  os.path.join(GFDL_BASE, 'input/SST_patches/ctrl_sst.nc'),
+                  os.path.join(GFDL_BASE, 'input/SST_patches/'+os.getenv('exp_name')+'.nc'),
                   os.path.join(GFDL_BASE, 'input/SST_patches/sic.nc')]
 
 # Define values for the 'core' namelist
@@ -244,7 +244,7 @@ exp.namelist = Namelist({
         'do_qflux': False,                      # Don't use the prescribed analytical formula for q-fluxes
         'do_read_sst': True,                    # Read in sst values from input file
         'do_sc_sst': True,                      # Do specified ssts (need both to be true)
-        'sst_file': 'ctrl_sst',                 # Set name of sst input file
+        'sst_file': os.getenv('exp_name'),      # Set name of sst input file
         'specify_sst_over_ocean_only': True,    # Make sure sst only specified in regions of ocean.
         # Copy from realistic_continents namelist
         'ice_file_name':'sic',
@@ -323,5 +323,5 @@ if __name__=="__main__":
     # Set up the experiment object, with the first argument being the experiment name.
     # This will be the name of the folder that the data will appear in.
     exp.run(1, use_restart=False, num_cores=NCORES, overwrite_data=OVERWRITE)
-    for i in range(2, 253):
+    for i in range(2, 121):
         exp.run(i, num_cores=NCORES, overwrite_data=OVERWRITE)

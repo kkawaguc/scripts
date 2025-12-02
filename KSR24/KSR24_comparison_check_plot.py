@@ -45,7 +45,7 @@ def main2():
     
     true_DLR = data['avg_sdlwrf']
     
-    alpha_set = np.linspace(0.844, 0.864, 21)
+    alpha_set = np.linspace(0.88, 0.9, 21)
     for alpha in alpha_set:
         est_DLR = KSR24(data['t2m'], data['d2m'], data['sp'], data['tcc'], data['lsm'], ppm=400, alpha=alpha) #SR21(data['t2m'], data['d2m'], data['tcwv'], data['sp'])
         print(alpha)
