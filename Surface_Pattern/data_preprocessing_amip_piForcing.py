@@ -1,7 +1,7 @@
 import xarray as xr
 import numpy as np
 import xesmf as xe
-import xcdat as xc
+#import xcdat as xc
 import os
 import metpy.calc as mpcalc
 import metpy.units as units
@@ -104,23 +104,30 @@ def compute_and_regrid_model_data(mod_name, mod_attrs):
     var_data_list = []
 
     for var in variables:
-        path_to_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", var, "g*/latest/*.nc")
-        check_path = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", var)
+        path_to_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-p4K', mod_attrs[1], "Amon", var, "g*/latest/*.nc")
+        check_path = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-p4K', mod_attrs[1], "Amon", var)
         if not os.path.exists(check_path):
             print(mod_name + ' ' + var)
         try:
-            var_data = xc.open_mf_dataset(path_to_file, preprocess = annual_mean_and_regrid)
+            var_data = xr.open_mf_dataset(path_to_file, preprocess = annual_mean_and_regrid)
         except:
-            path_to_ps_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ps', "g*/latest/*.nc")
-            ps = xc.open_mf_dataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
-            if var == 'uas':
-                path_to_ua_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ua', "g*/latest/*.nc")
-                u_winds = xc.open_mf_dataset(path_to_ua_file, preprocess = annual_mean_and_regrid)
-                var_data = calculate_u10(u_winds['ua'], ps['ps']).rename('uas')
-            elif var == 'vas':
-                path_to_va_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'va', "g*/latest/*.nc")
-                v_winds = xc.open_mf_dataset(path_to_va_file, preprocess = annual_mean_and_regrid)
-                var_data = calculate_u10(v_winds['va'], ps['ps']).rename('vas')
+            if var == 'ps':
+                #Some of the ps data is in csgap
+                var_data = xr.open_mfdataset('/gws/nopw/j04/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = annual_mean_and_regrid)
+            elif var in ['uas', 'vas']:
+                try:
+                    path_to_ps_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ps', "g*/latest/*.nc")
+                except:
+                    path_to_ps_file = '/gws/nopw/j04/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc'
+                ps = xr.open_mf_dataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
+                if var == 'uas':
+                    path_to_ua_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ua', "g*/latest/*.nc")
+                    u_winds = xr.open_mf_dataset(path_to_ua_file, preprocess = annual_mean_and_regrid)
+                    var_data = calculate_u10(u_winds['ua'], ps['ps']).rename('uas')
+                elif var == 'vas':
+                    path_to_va_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'va', "g*/latest/*.nc")
+                    v_winds = xr.open_mf_dataset(path_to_va_file, preprocess = annual_mean_and_regrid)
+                    var_data = calculate_u10(v_winds['va'], ps['ps']).rename('vas')
             else:
                 print('error occurred with' + var)
         var_data_list.append(var_data)
@@ -131,7 +138,8 @@ def main():
     on surface heat fluxes and circulation.'''
     models = {"CanESM5":["CCCma", "r1i1p2f1"], "CESM2":["NCAR", "r1i1p1f1"], 'CNRM-CM6-1':['CNRM-CERFACS', 'r1i1p1f2'],
               'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
-              'MIROC6':['MIROC', 'r1i1p1f1'], "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
+              #'MIROC6':['MIROC', 'r1i1p1f1'], 
+              "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
     
     output_list = []
     model_list = []
@@ -145,6 +153,15 @@ def main():
     output_data.assign_coords({'model':model_list})
 
     output_data.to_netcdf("/gws/nopw/j04/csgap/kkawaguchi/surface_data/amip-piForcing.nc")    
+    return None
+
+def main_test_vars():
+    models = {"CanESM5":["CCCma", "r1i1p2f1"], "CESM2":["NCAR", "r1i1p1f1"], 'CNRM-CM6-1':['CNRM-CERFACS', 'r1i1p1f2'],
+              'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
+              'MIROC6':['MIROC', 'r1i1p1f1'], "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
+
+    for mod in models:
+        temp_data = compute_and_regrid_model_data(mod, models[mod])
     return None
 
 main()

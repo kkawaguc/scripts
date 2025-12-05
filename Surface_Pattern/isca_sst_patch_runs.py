@@ -2,7 +2,7 @@ import os
 import numpy as np
 from isca import SocratesCodeBase, DiagTable, Experiment, Namelist, GFDL_BASE
 
-NCORES = 8 
+NCORES = 16 
 NUM_LEVELS = 25
 
 base_dir = os.path.dirname(os.path.realpath(__file__))

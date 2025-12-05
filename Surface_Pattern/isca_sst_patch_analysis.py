@@ -9,14 +9,23 @@ import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 from metpy.interpolate import log_interpolate_1d
 from SST_patch_analysis_functions import *
+from metpy.units import units
+
+# %%
+plot_turbulent_flux_decomposition(patch_name='wp', pert_type='warming')
+# %%
+
+WP_resp, ctrl, WP_warm = extract_pressure_level_response(patch='wp', pert_type='warming')
+
+# %%
+plot_zonal_mean_responses(WP_resp, ctrl, WP_warm)
 
 # %%
 
-experiment_list = ['Greens_function_control', 'wp_p2k', 'wp_m2k', 'ep_p2k', 'ep_m2k', 'np_p2k', 'np_m2k', 'so_p2k', 'so_m2k']
+WP_resp = extract_response_function(patch_name='wp', pert_type='warming')
 
-for exp in experiment_list:
-    interpolate_to_pressure_levels(exp)
-    print(exp)
+plot_TOA_fluxes(WP_resp, title='WP_warming_TOA')
+plot_SFC_fluxes(WP_resp, title='WP_warming_SFC')
 
 
 # %%
@@ -25,16 +34,14 @@ SO_warm = extract_response_function(patch_name='so', pert_type='warming')
 plot_TOA_fluxes(SO_warm, title='SO_warming_TOA')
 
 # %%
+SO_plev_resp, ctrl, SO_plev_warm = extract_pressure_level_response(patch='so', pert_type='warming')
 
-SO_cool = extract_response_function(patch_name='so', pert_type='cooling')
-plot_TOA_fluxes(SO_cool, title='SO_cooling_TOA')
+plot_zonal_mean_responses(SO_plev_resp, ctrl, SO_plev_warm)
 
 # %%
 
-WP_resp = extract_response_function(patch_name='wp', pert_type='symmetric')
-
-plot_TOA_fluxes(WP_resp, title='WP_symm_TOA')
-plot_SFC_fluxes(WP_resp, title='WP_symm_SFC')
+SO_cool = extract_response_function(patch_name='so', pert_type='cooling')
+plot_TOA_fluxes(SO_cool, title='SO_cooling_TOA')
 
 # %%
 
