@@ -1,11 +1,12 @@
-import xskillscore as xs
+#import xskillscore as xs
 import xarray as xr
 import numpy as np
-import global_land_mask as lm
-import easyclimate.core.utility as utility
-import easyclimate.field.boundary_layer.aerobulk as aerobulk
+#import global_land_mask as lm
+#import easyclimate.core.utility as utility
+#import easyclimate.field.boundary_layer.aerobulk as aerobulk
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
+import scipy as sp
 
 def calc_land_mask(data):
     '''Calculate a land mask
@@ -160,3 +161,147 @@ def facetplot(data, dims_to_reduce=None, facet_dim=None, title='', **kwargs):
     plt.show()
     return None
     
+
+def calc_vapor_pressure(temp):
+    '''Calculates the vapor pressure from the temperature.
+    Inputting the 2m temperature will return the saturation vapor pressure,
+    while inputting the 2m dew point temperature will return the vapor pressure.
+
+    Applies the Huang (2018) formula https://doi.org/10.1175/JAMC-D-17-0334.1
+
+    Inputs:
+        temp - Temperature (K): xarray dataarray
+    Returns:
+        vp - Vapor Pressure (Pa): xarray dataarray'''
+    temp_celsius = temp - 273.15
+
+    pos_vap = (np.exp(34.494 - (4924.99/(temp_celsius + 237.1)))/
+               (temp_celsius + 105)**1.57)
+    neg_vap = (np.exp(43.494 - (6545.8/(temp_celsius + 278)))/
+               (temp_celsius + 868)**2)
+    vp = xr.where(temp_celsius > 0, pos_vap, neg_vap)
+    return vp
+
+def q2dpt(q, ps):
+    '''Calculates the dew point from the specific humidity'''
+    w = q/1-q
+    vp = w * ps/ (0.622 + w)
+    dpt = vp2dpt(vp)
+    return dpt
+
+def vp2dpt(vp):
+    '''Calculates the dew point from the vapor pressure using
+    the improved Magnus formula with respect to water and ice
+    Taken from Huang (2018).
+    Inputs:
+        vp: vapor pressure in Pa
+    Returns:
+        dpt: 2m dew point temperature'''
+    a1 = 243.04*np.log(vp/610.94)
+    a2 = 17.625-np.log(vp/610.94)
+    b1 = 273.86*np.log(vp/611.21)
+    b2 = 22.587-np.log(vp/611.21)
+    return xr.where(vp>610.94, a1/a2+273.15, b1/b2+273.15)
+
+def tcwv_est(dpt, lsm):
+    '''Estimates the total column water vapour using the equation from Reitan (1963).
+    Separate parameters for land and ocean.
+    Inputs:
+        dpt: dew point temperature (K)
+        lsm: land sea mask (0-1), 1 if land
+    Returns:
+        tcwv_est: estimate of the tcwv'''
+    land_tcwv = np.exp(-15.6+0.0656*dpt)
+    ocean_tcwv = np.exp(-14.3+0.0605*dpt)
+    return lsm * land_tcwv + (1-lsm)*ocean_tcwv
+
+def calc_specific_humidity(ps, dpt):
+    '''Calculates specific humidity from the surface pressure and the
+    dew point temperature.
+    Inputs:
+        ps - Surface Pressure (Pa): xarray dataarray
+        dpt - Dew point temperature (Pa): xarray dataarray
+    Returns:
+        q - Specific humidity (kg/kg): xarray dataarray'''
+    vp = calc_vapor_pressure(dpt)
+    w = 0.622 * vp /(ps - vp)
+    q = w / (1+w)
+    return q
+
+def calc_Heff(tcwv, rho, ps, theta):
+    '''Calculates the effective height scale for the SR21 parameterisation
+    Inputs:
+        tcwv - Total column water vapor (kg/m^2): xarray dataarray
+        rho - Near surface water vapor density (kg/m^3): xarray dataarray
+        ps - surface pressure (Pa): xarray dataarray
+        theta - Effective zenith angle (0-90): float
+    Returns:
+        Heff - Effective scale height (m): xarray dataarray'''
+    H = tcwv / rho
+    Heff = H / np.cos(np.radians(theta)) * (ps/1e5)**1.8
+    return Heff
+
+def SR21(temp, q, tcwv, ps, theta=40.3, ppm = 280):
+    '''Estimates the clear-sky downwelling longwave given the
+    temperature, specific humidity, surface pressure.
+    Implements the method from Shakespeare and Roderick (2021)
+    https://doi.org/10.1002/qj.4176
+
+    Inputs:
+        temp - Near-surface air temperature (K): xarray dataarray
+        dpt - Dew point temperature (K): xarray dataarray
+        tcwv - Total column water vapor (kg/m^2):xarray dataarray
+        ps - Surface Pressure (Pa): xarray dataarray
+        theta - effective zenith angle (0-90 degrees): float
+        ppm - CO2 concentration (ppm): float 
+    Returns:
+        L_clr - estimated clear-sky downwelling longwave (W/m^2)'''
+    sigma = 5.67e-8
+    SR21_data = sp.io.loadmat("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/data.mat")
+    Heff_lookup = SR21_data['Heff']
+    q_lookup = SR21_data['q']
+    if ppm == 280:
+        tau_lookup_200 = SR21_data['tau_eff_200']
+        tau_lookup_400 = SR21_data['tau_eff_400']
+        tau_lookup = 0.6 * tau_lookup_200 + 0.4*tau_lookup_400
+    
+    #Molar mass of air and ideal gas constant
+    M = 0.02897
+    R = 8.3145
+    # Calculate the WV density using the ideal gas law
+    rho = q * ps * M/(R * temp)
+
+    #Effective height
+    Heff = calc_Heff(tcwv, rho, ps, theta)
+
+    #Calculate the optical depth as a function of q and Heff
+    tau_interp = sp.interpolate.RectBivariateSpline(q_lookup, Heff_lookup, tau_lookup)
+    tau_func = lambda x,y,z: tau_interp(x, y, grid=z)
+
+    tau = xr.apply_ufunc(tau_func, q, Heff, False, output_dtypes=[float], dask='parallelized')
+
+    L_clr = sigma * temp**4 * (1 - np.exp(-tau))
+    return L_clr
+
+def SR21_inversion(temp, q, tcwv, ps, ppm = 280):
+    '''Function for the clear-sky correction to account for temperature inversions.
+    In the case that an inversion exists, we assume that the tcwv is constant (as it is
+    a direct ERA5 input), but the specific humidity scales (assume that the RH at near surface
+    is equal to RH at inversion top). https://doi.org/10.1002/joc.7780
+    Inputs:
+        a: coefficients to be optimised
+        vars: variables needed to calculate the clear-sky DLR
+    Returns:
+        adjusted_SR21: estimated DLR clear-sky'''
+    temp_eff = xr.where(temp >= 270, temp, 0.823*temp + 270 * (1-0.823))
+
+    #vp = calc_vapor_pressure(dpt)
+    #sat_vap = calc_vapor_pressure(temp)
+    #rh = vp/sat_vap
+    #sat_vap_eff = calc_vapor_pressure(temp_eff)
+
+    #vp_eff = xr.where(temp >= 270, vp, rh * sat_vap_eff)
+    #dpt_eff = xr.where(temp >= 270, dpt, vp2dpt(vp_eff))
+
+    ps_eff = 0.869*ps
+    return SR21(temp_eff, q, tcwv, ps_eff, theta=52.7, ppm=ppm)

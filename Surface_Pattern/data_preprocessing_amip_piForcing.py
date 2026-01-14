@@ -6,6 +6,7 @@ import os
 import metpy.calc as mpcalc
 import metpy.units as units
 import scipy as sp
+from CMIP6_analysis_functions import *
 
 #experiments = {"amip-piForcing":"CFMIP"}
 variables =  ["rsut", "rlut", "rsds", "rlds", "rlus", "rsus", "hfss", "hfls", "tas", "huss", "ts", "ps", "ua", "va", 
@@ -18,7 +19,17 @@ def regrid_data(model_data):
     Outputs:
         regridded_data: data regridded conservatively at 3 degrees'''
     output_grid = xe.util.grid_global(3, 3, lon1=360)
-
+    # NEED TO ADD LON BOUNDS HERE
+    if 'lon' not in model_data.dims:
+        model_data = model_data.rename({'longitude':'lon', 'latitude':'lat'})
+    model_lon = model_data.lon
+    model_lat = model_data.lat
+    dlon = np.diff(model_lon, 1)[0]
+    print(dlon)
+    model_data = model_data.assign_coords({'lon_b':np.linspace(float(model_lon.min()) - dlon/2, 
+                                                 float(model_lon.max()) + dlon/2, 
+                                                 len(model_lon)+1),
+                                           'lat_b':np.linspace(-90,90,len(model_lat)+1)})
     regridder_conservative = xe.Regridder(model_data, output_grid, 'conservative', periodic=True)
     return regridder_conservative(model_data)
 
@@ -104,41 +115,66 @@ def compute_and_regrid_model_data(mod_name, mod_attrs):
     var_data_list = []
 
     for var in variables:
-        path_to_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-p4K', mod_attrs[1], "Amon", var, "g*/latest/*.nc")
-        check_path = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-p4K', mod_attrs[1], "Amon", var)
+        path_to_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", var, "g*/latest/*.nc")
+        check_path = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", var)
+        print(path_to_file)
+        if os.path.exists(check_path):
+            var_data = xr.open_mfdataset(path_to_file, preprocess = annual_mean_and_regrid)
         if not os.path.exists(check_path):
-            print(mod_name + ' ' + var)
-        try:
-            var_data = xr.open_mf_dataset(path_to_file, preprocess = annual_mean_and_regrid)
-        except:
             if var == 'ps':
                 #Some of the ps data is in csgap
-                var_data = xr.open_mfdataset('/gws/nopw/j04/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = annual_mean_and_regrid)
+                var_data = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = annual_mean_and_regrid)
             elif var in ['uas', 'vas']:
                 try:
                     path_to_ps_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ps', "g*/latest/*.nc")
+                    ps = xr.open_mfdataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
                 except:
-                    path_to_ps_file = '/gws/nopw/j04/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc'
-                ps = xr.open_mf_dataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
+                    path_to_ps_file = '/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc'
+                    ps = xr.open_mfdataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
                 if var == 'uas':
                     path_to_ua_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ua', "g*/latest/*.nc")
-                    u_winds = xr.open_mf_dataset(path_to_ua_file, preprocess = annual_mean_and_regrid)
+                    u_winds = xr.open_mfdataset(path_to_ua_file, preprocess = annual_mean_and_regrid)
                     var_data = calculate_u10(u_winds['ua'], ps['ps']).rename('uas')
                 elif var == 'vas':
                     path_to_va_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'va', "g*/latest/*.nc")
-                    v_winds = xr.open_mf_dataset(path_to_va_file, preprocess = annual_mean_and_regrid)
+                    v_winds = xr.open_mfdataset(path_to_va_file, preprocess = annual_mean_and_regrid)
                     var_data = calculate_u10(v_winds['va'], ps['ps']).rename('vas')
+            elif var == 'rldscs' and mod_name == 'TaiESM1':
+                tas = xr.open_mfdataset(os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon/tas/g*/latest/*.nc"),
+                                        preprocess=annual_mean_and_regrid)
+                tas = tas['tas']
+                huss = xr.open_mfdataset(os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon/huss/g*/latest/*.nc"),
+                                        preprocess=annual_mean_and_regrid)
+                huss = huss['huss']
+                ps = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = annual_mean_and_regrid)
+                ps = ps['ps']
+                dpt = q2dpt(huss, ps)
+                lsm = xr.open_mfdataset("/gws/ssde/j25a/csgap/kkawaguchi/KSR24_data/data_stream-moda_stepType-avgua.nc", engine="netcdf4")
+                lsm = regrid_data(lsm)
+                lsm = lsm['lsm']
+                tcwv = tcwv_est(dpt, lsm)
+                var_data = SR21_inversion(tas, huss, tcwv, ps, ppm=280).rename('rldscs')
             else:
-                print('error occurred with' + var)
+                print('error occurred with ' + var +' '+mod_name)
         var_data_list.append(var_data)
-    return xr.merge(var_data_list, compat='minimal')
+        mod_data = xr.merge(var_data_list, compat='minimal')
+        if mod_name == 'CESM2':
+            mod_data = mod_data.isel({'time':slice(None, -1)})
+            mod_data['time'] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
+        elif mod_name == 'TaiESM1':
+            mod_data = mod_data.isel({'time':slice(20, None)})
+            mod_data['time'] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
+        else:
+            mod_data['time'] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
+    return mod_data
 
 def main():
     '''Preprocessing script for amip-piForcing to analyze the SST pattern effect
     on surface heat fluxes and circulation.'''
     models = {"CanESM5":["CCCma", "r1i1p2f1"], "CESM2":["NCAR", "r1i1p1f1"], 'CNRM-CM6-1':['CNRM-CERFACS', 'r1i1p1f2'],
-              'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
-              #'MIROC6':['MIROC', 'r1i1p1f1'], 
+              #'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], 
+              "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
+              'MIROC6':['MIROC', 'r1i1p1f1'], 
               "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
     
     output_list = []
@@ -149,16 +185,18 @@ def main():
         output_list.append(temp_data)
         model_list.append(mod)
 
-    output_data = xr.concat(output_list, dim='model')
+    output_data = xr.concat(output_list, dim='model', coords='minimal', compat='override')
     output_data.assign_coords({'model':model_list})
 
-    output_data.to_netcdf("/gws/nopw/j04/csgap/kkawaguchi/surface_data/amip-piForcing.nc")    
+    output_data.to_netcdf("/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_new.nc")    
     return None
 
 def main_test_vars():
     models = {"CanESM5":["CCCma", "r1i1p2f1"], "CESM2":["NCAR", "r1i1p1f1"], 'CNRM-CM6-1':['CNRM-CERFACS', 'r1i1p1f2'],
-              'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
-              'MIROC6':['MIROC', 'r1i1p1f1'], "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
+              #'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], 
+              "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
+              #'MIROC6':['MIROC', 'r1i1p1f1'], 
+              "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
 
     for mod in models:
         temp_data = compute_and_regrid_model_data(mod, models[mod])

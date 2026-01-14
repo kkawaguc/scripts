@@ -61,13 +61,15 @@ def plot_TOA_fluxes(resp, title=''):
 
     fig, ax = plt.subplots(3, 1, layout='constrained', subplot_kw={'projection':ccrs.PlateCarree(central_longitude=180)})
 
-    (resp['temp']).plot(ax=ax[0], vmin=-2, vmax=2, cmap='RdBu_r', transform=ccrs.PlateCarree(), cbar_kwargs={'label':'$\\Delta T$ (Lowest model level)'})
+    (resp['temp']).plot(ax=ax[0], vmin=-2, vmax=2, cmap='RdBu_r', transform=ccrs.PlateCarree(), cbar_kwargs={'label':'$\\Delta T$ (K)'})
     (resp['soc_toa_sw'] - resp['soc_olr']).plot(ax=ax[1], vmin=-20, vmax=20, cmap='RdBu_r', transform=ccrs.PlateCarree(), cbar_kwargs={'label':'TOA Resp ($\\mathrm{W/m^2}$)'})
     (resp['low_cld_amt']).plot(ax=ax[2], vmin=-10, vmax=10, cmap='RdBu_r', transform=ccrs.PlateCarree(),cbar_kwargs={'label':'LCC (%)'})
 
     for i in range(3):
         ax[i].coastlines()
     ax[0].set_title(title)
+    ax[1].set_title('')
+    ax[2].set_title('')
     fig.savefig('Plots/Patch_experiments/TOA_'+title+'.png')
     plt.show()
     return None
@@ -79,19 +81,27 @@ def plot_SFC_fluxes(resp, title=''):
         return None
     fig, ax = plt.subplots(3, 2, figsize=(12, 8), layout='constrained', subplot_kw={'projection':ccrs.PlateCarree(central_longitude=180)})
 
-    (resp['soc_surf_flux_lw'] + resp['soc_surf_flux_sw'] - 
-     resp['flux_lhe'] - resp['flux_t']).plot(ax=ax[0,0], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', cbar_kwargs={'label':'Net ($\\mathrm{W/m^2}$)'})
+    cbar = (resp['soc_surf_flux_lw'] + resp['soc_surf_flux_sw'] - 
+            resp['flux_lhe'] - resp['flux_t']).plot(ax=ax[0,0], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', extend='both', add_colorbar=False)
 
     (resp['soc_surf_flux_lw_clr'] + resp['soc_surf_flux_sw_clr']).plot(ax=ax[1,0], transform=ccrs.PlateCarree(), vmin=-25, 
-                                                                       vmax=25, cmap='RdBu_r', cbar_kwargs={'label':'Rad Clear ($\\mathrm{W/m^2}$)'})
+                                                                       vmax=25, cmap='RdBu_r', extend='both', add_colorbar=False)
 
     (resp['soc_surf_flux_lw'] - resp['soc_surf_flux_lw_clr'] 
      + resp['soc_surf_flux_sw'] - resp['soc_surf_flux_sw_clr']).plot(ax=ax[2,0], transform=ccrs.PlateCarree(), vmin=-25, 
-                                                                     vmax=25, cmap='RdBu_r', cbar_kwargs={'label':'CRE ($\\mathrm{W/m^2}$)'})
+                                                                     vmax=25, cmap='RdBu_r', extend='both', add_colorbar=False)
 
-    (-resp['flux_lhe']).plot(ax=ax[0,1], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r',cbar_kwargs={'label':'LH ($\\mathrm{W/m^2}$)'})
-    (-resp['flux_t']).plot(ax=ax[1,1], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', cbar_kwargs={'label':'SH ($\\mathrm{W/m^2}$)'})
-    (-resp['flux_lhe'] - resp['flux_t']).plot(ax=ax[2,1], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', cbar_kwargs={'label':'LH + SH ($\\mathrm{W/m^2}$)'})
+    (-resp['flux_lhe']).plot(ax=ax[0,1], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', extend='both', add_colorbar=False)
+    (-resp['flux_t']).plot(ax=ax[1,1], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', extend='both', add_colorbar=False)
+    (-resp['flux_lhe'] - resp['flux_t']).plot(ax=ax[2,1], transform=ccrs.PlateCarree(), vmin=-25, vmax=25, cmap='RdBu_r', extend='both', add_colorbar=False)
+    
+    ax[0,0].set_title('Net')
+    ax[0,1].set_title('LH')
+    ax[1,0].set_title('Rad Clear')
+    ax[1,1].set_title('SH')
+    ax[2,0].set_title('CRE')
+    ax[2,1].set_title('Turbulent')
+    fig.colorbar(cbar, ax=ax[:,:], orientation='vertical')
 
     for i in range(6):
         ax[i//2, i%2].coastlines()
@@ -116,11 +126,16 @@ def plot_turbulent_flux_decomposition(patch_name='wp', pert_type='warming'):
                                 decode_times=time_coder, decode_timedelta=True, engine='netcdf4', preprocess=subset_variables,
                                 chunks={'time':12, 'lat':64, 'lon':128})
         m2K = m2K.isel({'time':slice(12, None)}).groupby('time.month').mean('time').compute()
-        #HF_m2K = aerobulk.calc_turbulent_fluxes_without_skin_correction(m2K["t_surf"], "degK", m2K["temp"], "degK", 
-        #                                                                m2K["sphum"], "kg/kg", m2K["ucomp"],
-        #                                                                m2K["vcomp"], m2K["ps"], "Pa")
+        m2K_const_RH_vp = calc_vapor_pressure(m2K['temp'])*calc_relhum(ctrl['temp'], ctrl['sphum'], ctrl['ps'])
+        m2K_const_RH = calc_spechum(m2K_const_RH_vp, m2K['ps'])
+        delta_RH_vp = calc_vapor_pressure(ctrl['temp']) * calc_relhum(m2K['temp'], m2K['sphum'], m2K['ps'])
+        delta_RH = calc_spechum(delta_RH_vp, m2K['ps'])
+        
+        HF_m2K_RH = aerobulk.calc_turbulent_fluxes_without_skin_correction(ctrl["t_surf"], "degK", ctrl["temp"], "degK", 
+                                                                           delta_RH, "kg/kg", ctrl["ucomp"],
+                                                                           ctrl["vcomp"], ctrl["ps"], "Pa")
         HF_m2K_temp = aerobulk.calc_turbulent_fluxes_without_skin_correction(m2K["t_surf"], "degK", m2K["temp"], "degK", 
-                                                                             m2K["sphum"], "kg/kg", ctrl["ucomp"],
+                                                                             m2K_const_RH, "kg/kg", ctrl["ucomp"],
                                                                              ctrl["vcomp"], m2K["ps"], "Pa")
         HF_m2K_wind = aerobulk.calc_turbulent_fluxes_without_skin_correction(ctrl["t_surf"], "degK", ctrl["temp"], "degK", 
                                                                              ctrl["sphum"], "kg/kg", m2K["ucomp"],
@@ -135,16 +150,27 @@ def plot_turbulent_flux_decomposition(patch_name='wp', pert_type='warming'):
                                 decode_times=time_coder, decode_timedelta=True, engine='netcdf4', preprocess=subset_variables,
                                 chunks={'time':12, 'lat':64, 'lon':128})
         p2K = p2K.isel({'time':slice(12, None)}).groupby('time.month').mean('time').compute()
-        #HF_p2K = aerobulk.calc_turbulent_fluxes_without_skin_correction(p2K["t_surf"], "degK", p2K["temp"], "degK", 
-        #                                                                p2K["sphum"], "kg/kg", p2K["ucomp"],
-        #                                                                p2K["vcomp"], p2K["ps"], "Pa")
+
+        p2K_const_RH_vp = calc_vapor_pressure(p2K['temp'])*calc_relhum(ctrl['temp'], ctrl['sphum'], ctrl['ps'])
+        print(p2K_const_RH_vp.mean())
+        p2K_const_RH = calc_spechum(p2K_const_RH_vp, p2K['ps'])
+        print(p2K_const_RH.mean())
+        delta_RH_vp = calc_vapor_pressure(ctrl['temp']) * calc_relhum(p2K['temp'], p2K['sphum'], p2K['ps'])
+        print(delta_RH_vp.mean())
+        delta_RH = calc_spechum(delta_RH_vp, p2K['ps'])
+        print(delta_RH.mean())
+
+        HF_p2K_RH = aerobulk.calc_turbulent_fluxes_without_skin_correction(ctrl["t_surf"], "degK", ctrl["temp"], "degK", 
+                                                                           delta_RH, "kg/kg", ctrl["ucomp"],
+                                                                           ctrl["vcomp"], ctrl["ps"], "Pa")
         HF_p2K_temp = aerobulk.calc_turbulent_fluxes_without_skin_correction(p2K["t_surf"], "degK", p2K["temp"], "degK", 
-                                                                             p2K["sphum"], "kg/kg", ctrl["ucomp"],
+                                                                             p2K_const_RH, "kg/kg", ctrl["ucomp"],
                                                                              ctrl["vcomp"], p2K["ps"], "Pa")
         HF_p2K_wind = aerobulk.calc_turbulent_fluxes_without_skin_correction(ctrl["t_surf"], "degK", ctrl["temp"], "degK", 
                                                                              ctrl["sphum"], "kg/kg", p2K["ucomp"],
                                                                              p2K["vcomp"], p2K["ps"], "Pa")
         real_dHF = (p2K['flux_lhe'] + p2K['flux_t']) - (ctrl['flux_lhe'] + ctrl['flux_t'])
+        dHF_RH = (HF_p2K_RH['ql'] + HF_p2K_RH['qh']) - (HF_ctrl['ql'] + HF_ctrl['qh'])
         dHF_temp = (HF_p2K_temp['ql'] + HF_p2K_temp['qh']) - (HF_ctrl['ql'] + HF_ctrl['qh'])
         dHF_wind = (HF_p2K_wind['ql'] + HF_p2K_wind['qh']) - (HF_ctrl['ql'] + HF_ctrl['qh'])
         delta_wind = (np.sqrt(p2K['ucomp']** 2 + p2K['vcomp'] ** 2) - 
@@ -152,19 +178,54 @@ def plot_turbulent_flux_decomposition(patch_name='wp', pert_type='warming'):
     
     fig, ax = plt.subplots(2, 2, figsize=(12, 6), subplot_kw={'projection':ccrs.PlateCarree(central_longitude=180)})
     (-real_dHF).mean('month').plot(ax = ax[0, 0], vmin=-25, vmax=25,cmap='RdBu_r',transform=ccrs.PlateCarree())
+    #(-ctrl['flux_lhe'] - ctrl['flux_t']).mean('month').plot(ax = ax[1, 0], transform=ccrs.PlateCarree())
     dHF_temp.mean('month').plot(ax = ax[0, 1], vmin=-25, vmax=25,cmap='RdBu_r',transform=ccrs.PlateCarree())
     dHF_wind.mean('month').plot(ax = ax[1, 1], vmin=-25, vmax=25,cmap='RdBu_r',transform=ccrs.PlateCarree())
+    dHF_RH.mean('month').plot(ax = ax[1, 0], vmin=-25, vmax=25,cmap='RdBu_r',transform=ccrs.PlateCarree())
+    (dHF_temp + dHF_wind + dHF_RH).mean('month').plot.contour(ax=ax[0,0], levels = [-15,15], colors='k', transform=ccrs.PlateCarree())
     #delta_wind.mean('month').plot(ax = ax[1, 0], vmin=-2, vmax=2, cmap='RdBu_r', transform=ccrs.PlateCarree())
     #ctrl.mean('month').isel({'lat':slice(None, None, 8), 'lon':slice(None, None, 8)}).plot.quiver(x='lon', y='lat', u='ucomp', v='vcomp', ax=ax[1,0])
     for i in range(4):
         ax[i // 2, i %2].coastlines()
-    ax[0, 0].set_title('Change in Turbulent flux')
-    ax[0, 1].set_title('Thermodynamic component')
+    ax[0, 0].set_title('Change in turbulent flux')
+    ax[1, 0].set_title('RH component')
+    ax[0, 1].set_title('Thermal component')
     ax[1, 1].set_title('Dynamic component')
-    plt.delaxes(ax[1, 0])
+    fig.savefig('Plots/Patch_experiments/turbflux_'+patch_name+'_'+pert_type+'.png')
     plt.show()
     return None
     
+
+def calc_vapor_pressure(temp):
+    '''Calculates the vapor pressure from the temperature.
+    Inputting the 2m temperature will return the saturation vapor pressure,
+    while inputting the 2m dew point temperature will return the vapor pressure.
+
+    Applies the Huang (2018) formula https://doi.org/10.1175/JAMC-D-17-0334.1
+
+    Inputs:
+        temp - Temperature (K): xarray dataarray
+    Returns:
+        vp - Vapor Pressure (Pa): xarray dataarray'''
+    temp_celsius = temp - 273.15
+
+    pos_vap = (np.exp(34.494 - (4924.99/(temp_celsius + 237.1)))/
+               (temp_celsius + 105)**1.57)
+    neg_vap = (np.exp(43.494 - (6545.8/(temp_celsius + 278)))/
+               (temp_celsius + 868)**2)
+    vp = xr.where(temp_celsius > 0, pos_vap, neg_vap)
+    return vp
+
+def calc_relhum(temp, q, ps):
+    w = q / (1-q)
+    vp = w * ps / (0.622 + w)
+
+    sat_vp = calc_vapor_pressure(temp)
+    return vp / sat_vp
+
+def calc_spechum(vp, ps):
+    w = 0.622 * vp / (ps - vp)
+    return w / (1+w)
 
 def sel_pressure_data(dataset):
     return dataset[['ucomp', 'vcomp', 'omega', 'temp', 'ps']]
@@ -243,7 +304,7 @@ def calc_streamfunction(data):
     streamfunction = (2 * math.pi * r * np.cos(np.radians(data.lat)) / g) * (data['vwind'].mean('lon') * mass_weights).cumulative('plev').sum()
     return streamfunction
 
-def plot_zonal_mean_responses(response, control, pert_run):
+def plot_zonal_mean_responses(response, control, pert_run, title=''):
     fig = plt.figure(layout='constrained', figsize=(16, 8))
     ax = np.empty((2, 2), dtype=object)
 
@@ -255,7 +316,7 @@ def plot_zonal_mean_responses(response, control, pert_run):
     # Map subplot with PlateCarree projection
     ax[1,1] = fig.add_subplot(2, 2, 4, projection=ccrs.PlateCarree(central_longitude=180))
 
-    response['temp'].mean('lon').plot(ax=ax[0, 0], x='lat', yincrease=False, vmin=-0.8, vmax=0.8, cmap='RdBu_r', cbar_kwargs={'label':''})
+    response['temp'].mean('lon').plot(ax=ax[0, 0], x='lat', yincrease=False, vmin=-0.8, vmax=0.8, cmap='RdBu_r', extend='both', cbar_kwargs={'label':''})
     temp_contours = control['temp'].mean('lon').plot.contour(ax=ax[0, 0], x='lat', yincrease=False, add_colorbar=False, 
                                                              levels=[190, 200, 210, 220, 230, 240, 250, 260, 270, 280,290, 300], 
                                                              colors='black')
@@ -264,7 +325,7 @@ def plot_zonal_mean_responses(response, control, pert_run):
     ax[0,0].set_xlabel('')
     ax[0,0].set_title('a) Temperature (K)')
 
-    response['uwind'].mean('lon').plot(ax=ax[0, 1], x='lat', yincrease=False, vmin=-4, vmax=4, cmap='RdBu_r', cbar_kwargs={'label':''})
+    response['uwind'].mean('lon').plot(ax=ax[0, 1], x='lat', yincrease=False, vmin=-4, vmax=4, cmap='RdBu_r', extend='both', cbar_kwargs={'label':''})
     wind_contours = control['uwind'].mean('lon').plot.contour(ax=ax[0, 1], x='lat', yincrease=False, add_colorbar=False, 
                                                               levels=np.linspace(-40, 40, 9, dtype=int), colors='black')
     ax[0,1].clabel(wind_contours, wind_contours.levels[::2], fontsize=10)
@@ -272,7 +333,7 @@ def plot_zonal_mean_responses(response, control, pert_run):
     ax[0,1].set_xlabel('')
     ax[0,1].set_title('b) Zonal wind (m/s)')
 
-    calc_streamfunction(response).plot(ax=ax[1, 0], x='lat', yincrease=False, robust=True, cmap='RdBu_r')
+    calc_streamfunction(response).plot(ax=ax[1, 0], x='lat', yincrease=False, vmin=-5e9, vmax=5e9, cmap='RdBu_r', extend='both')
     stm_fn = calc_streamfunction(control).plot.contour(ax=ax[1, 0], x='lat', yincrease=False, add_colorbar=False, 
                                                        levels=[-2.5e11, -2e11, -1.5e11, -1e11, -6e10, -3e10, -1e10, 1e10, 3e10, 6e10, 1e11, 1.5e11, 2e11, 2.5e11], 
                                                        colors='black')
@@ -281,10 +342,11 @@ def plot_zonal_mean_responses(response, control, pert_run):
     ax[1,0].set_xlabel('')
     ax[1,0].set_title('c) Meridional streamfunction (kg/s)')
 
-    pert_run['omega'].sel({'plev':50000, 'lat':slice(-20, 20)}).plot(ax=ax[1, 1], vmin=-0.15, vmax=0.15, transform=ccrs.PlateCarree(), cmap='RdBu_r')
+    pert_run['omega'].sel({'plev':50000, 'lat':slice(-20, 20)}).plot(ax=ax[1, 1], vmin=-0.15, vmax=0.15, transform=ccrs.PlateCarree(), cmap='RdBu_r', extend='both')
     control['omega'].sel({'plev':50000, 'lat':slice(-20, 20)}).plot.contour(ax=ax[1, 1], add_colorbar=False, levels=[0], 
                                                       colors='black', linewidth=3,transform=ccrs.PlateCarree())
     ax[1,1].coastlines()
     ax[1,1].set_title('d) Tropical 500hPa vertical velocity (Pa/s)')
+    fig.savefig('Plots/Patch_experiments/zonalmean_'+title+'.png')
     plt.show()
     return None
