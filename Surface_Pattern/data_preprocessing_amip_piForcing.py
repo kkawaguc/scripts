@@ -4,13 +4,15 @@ import xesmf as xe
 #import xcdat as xc
 import os
 import metpy.calc as mpcalc
-import metpy.units as units
+from metpy.units import units
 import scipy as sp
 from CMIP6_analysis_functions import *
 
 #experiments = {"amip-piForcing":"CFMIP"}
-variables =  ["rsut", "rlut", "rsds", "rlds", "rlus", "rsus", "hfss", "hfls", "tas", "huss", "ts", "ps", "ua", "va", 
-              'rsutcs', 'rlutcs', 'rsuscs', 'rsdscs', 'rldscs']
+#variables =  ["rsut", "rlut", "rsds", "rlds", "rlus", "rsus", "hfss", "hfls", "tas", 'ta', "huss", 'hus', "ts", "ps", "uas", "vas", 
+#              'rsutcs', 'rlutcs', 'rsuscs', 'rsdscs', 'rldscs']
+
+variables = ['wap', 'cf', 'pr']
 
 def regrid_data(model_data):
     '''Regrid model data conservatively to a common 3 degree grid
@@ -18,14 +20,18 @@ def regrid_data(model_data):
         model_data: the model data to be regridded
     Outputs:
         regridded_data: data regridded conservatively at 3 degrees'''
-    output_grid = xe.util.grid_global(3, 3, lon1=360)
+    output_grid = xr.Dataset(
+    {
+        "lat": (["lat"], np.linspace(-88.5, 88.5, 60), {"units": "degrees_north"}),
+        "lon": (["lon"], np.linspace(1.5, 358.5, 120), {"units": "degrees_east"}),
+    }
+    )
     # NEED TO ADD LON BOUNDS HERE
     if 'lon' not in model_data.dims:
         model_data = model_data.rename({'longitude':'lon', 'latitude':'lat'})
     model_lon = model_data.lon
     model_lat = model_data.lat
     dlon = np.diff(model_lon, 1)[0]
-    print(dlon)
     model_data = model_data.assign_coords({'lon_b':np.linspace(float(model_lon.min()) - dlon/2, 
                                                  float(model_lon.max()) + dlon/2, 
                                                  len(model_lon)+1),
@@ -33,11 +39,11 @@ def regrid_data(model_data):
     regridder_conservative = xe.Regridder(model_data, output_grid, 'conservative', periodic=True)
     return regridder_conservative(model_data)
 
-def annual_mean_and_regrid(dataset):
+def chunk_and_regrid(dataset):
     '''Compute the annual mean data'''
-    annual_mean = dataset.resample({'time':'YS'}).mean()
-    annual_mean_regridded = regrid_data(annual_mean)
-    return annual_mean_regridded
+    chunked_model_data = dataset.chunk({'time':300})
+    chunked_regridded = regrid_data(chunked_model_data)
+    return chunked_regridded
 
 def sel_lowest_pressure_above_ground(surf_pres_plus_10):
     plev = np.linspace(100000., 40000., 61)
@@ -104,7 +110,8 @@ def calculate_u10(ua, surf_pres):
     lowest_pressure_level = lowest_pressure_level * units.Pa
     z_lpl = mpcalc.pressure_to_height_std(lowest_pressure_level)
     z_bottom = z_lpl - z_surf
-    u_bottom = xr.apply_ufunc(wind_lowest_pressure_above_ground, ua, surf_pres ,input_core_dims=[['plev'], []], output_core_dims=[[]], output_dtypes=[float],vectorize=True,dask='parallelized')
+    u_bottom = xr.apply_ufunc(wind_lowest_pressure_above_ground, ua, surf_pres ,input_core_dims=[['plev'], []], output_core_dims=[[]], 
+                              output_dtypes=[float],vectorize=True,dask='parallelized', dask_gufunc_kwargs={'allow_rechunk':True})
     u10 = u_bottom * np.log(10 * units.m/z_0) / np.log(z_bottom/z_0)
     return u10.metpy.dequantify()
 
@@ -117,40 +124,49 @@ def compute_and_regrid_model_data(mod_name, mod_attrs):
     for var in variables:
         path_to_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", var, "g*/latest/*.nc")
         check_path = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", var)
-        print(path_to_file)
         if os.path.exists(check_path):
-            var_data = xr.open_mfdataset(path_to_file, preprocess = annual_mean_and_regrid)
+            var_data = xr.open_mfdataset(path_to_file, preprocess = chunk_and_regrid)
         if not os.path.exists(check_path):
             if var == 'ps':
                 #Some of the ps data is in csgap
-                var_data = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = annual_mean_and_regrid)
+                var_data = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = chunk_and_regrid)
             elif var in ['uas', 'vas']:
                 try:
                     path_to_ps_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ps', "g*/latest/*.nc")
-                    ps = xr.open_mfdataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
+                    ps = xr.open_mfdataset(path_to_ps_file, preprocess = chunk_and_regrid)
                 except:
                     path_to_ps_file = '/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc'
-                    ps = xr.open_mfdataset(path_to_ps_file, preprocess = annual_mean_and_regrid)
+                    ps = xr.open_mfdataset(path_to_ps_file, preprocess = chunk_and_regrid)
                 if var == 'uas':
                     path_to_ua_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'ua', "g*/latest/*.nc")
-                    u_winds = xr.open_mfdataset(path_to_ua_file, preprocess = annual_mean_and_regrid)
+                    u_winds = xr.open_mfdataset(path_to_ua_file, preprocess = chunk_and_regrid)
                     var_data = calculate_u10(u_winds['ua'], ps['ps']).rename('uas')
                 elif var == 'vas':
                     path_to_va_file = os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon", 'va', "g*/latest/*.nc")
-                    v_winds = xr.open_mfdataset(path_to_va_file, preprocess = annual_mean_and_regrid)
+                    v_winds = xr.open_mfdataset(path_to_va_file, preprocess = chunk_and_regrid)
                     var_data = calculate_u10(v_winds['va'], ps['ps']).rename('vas')
+            elif var == 'rsds' and mod_name == 'MIROC6':
+                var_data = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/rsds*'+mod_name+'*.nc', preprocess = chunk_and_regrid)
+            elif var == 'rlus' and mod_name == 'MIROC6':
+                var_data = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/rlus*'+mod_name+'*.nc', preprocess = chunk_and_regrid)
+            elif var == 'hfss' and mod_name == 'MIROC6':
+                var_data = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/hfss*'+mod_name+'*.nc', preprocess = chunk_and_regrid)
+            elif var == 'tas' and mod_name == 'MIROC6':
+                tas_file = xr.open_dataset('/gws/ssde/j25a/csgap/shared/cmip6/tas/tas_Amon_MIROC6_amip-piForcing_r1i1p1f1_gn.nc')
+                tas_file = chunk_and_regrid(tas_file.isel({'lat':slice(None, None, -1)}))
+                var_data = tas_file['tas']
             elif var == 'rldscs' and mod_name == 'TaiESM1':
                 tas = xr.open_mfdataset(os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon/tas/g*/latest/*.nc"),
-                                        preprocess=annual_mean_and_regrid)
+                                        preprocess=chunk_and_regrid)
                 tas = tas['tas']
                 huss = xr.open_mfdataset(os.path.join(base_dir, mod_attrs[0], mod_name, 'amip-piForcing', mod_attrs[1], "Amon/huss/g*/latest/*.nc"),
-                                        preprocess=annual_mean_and_regrid)
+                                        preprocess=chunk_and_regrid)
                 huss = huss['huss']
-                ps = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = annual_mean_and_regrid)
+                ps = xr.open_mfdataset('/gws/ssde/j25a/csgap/kkawaguchi/amip_piForcing/*'+mod_name+'*.nc', preprocess = chunk_and_regrid)
                 ps = ps['ps']
                 dpt = q2dpt(huss, ps)
-                lsm = xr.open_mfdataset("/gws/ssde/j25a/csgap/kkawaguchi/KSR24_data/data_stream-moda_stepType-avgua.nc", engine="netcdf4")
-                lsm = regrid_data(lsm)
+                lsm = xr.open_dataset("/gws/ssde/j25a/csgap/kkawaguchi/KSR24_data/data_stream-moda_stepType-avgua.nc", engine="netcdf4")
+                lsm = regrid_data(lsm.mean('valid_time').isel({'latitude':slice(None, None, -1)}))
                 lsm = lsm['lsm']
                 tcwv = tcwv_est(dpt, lsm)
                 var_data = SR21_inversion(tas, huss, tcwv, ps, ppm=280).rename('rldscs')
@@ -159,13 +175,13 @@ def compute_and_regrid_model_data(mod_name, mod_attrs):
         var_data_list.append(var_data)
         mod_data = xr.merge(var_data_list, compat='minimal')
         if mod_name == 'CESM2':
-            mod_data = mod_data.isel({'time':slice(None, -1)})
-            mod_data['time'] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
+            mod_data = mod_data.isel({'time':slice(None, -12)})
+            mod_data['time'] = xr.date_range(start="1870-01-01", periods=1740, freq="MS", use_cftime=True)
         elif mod_name == 'TaiESM1':
-            mod_data = mod_data.isel({'time':slice(20, None)})
-            mod_data['time'] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
+            mod_data = mod_data.isel({'time':slice(240, None)})
+            mod_data['time'] = xr.date_range(start="1870-01-01", periods=1740, freq="MS", use_cftime=True)
         else:
-            mod_data['time'] = xr.date_range(start="1870", periods=145, freq="YS", use_cftime=True)
+            mod_data['time'] = xr.date_range(start="1870-01-01", periods=1740, freq="MS", use_cftime=True)
     return mod_data
 
 def main():
@@ -175,7 +191,8 @@ def main():
               #'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], 
               "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
               'MIROC6':['MIROC', 'r1i1p1f1'], 
-              "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
+              "MRI-ESM2-0":["MRI", "r1i1p1f1"],
+              'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
     
     output_list = []
     model_list = []
@@ -184,22 +201,12 @@ def main():
         temp_data = compute_and_regrid_model_data(mod, models[mod])
         output_list.append(temp_data)
         model_list.append(mod)
+        print(mod)
 
     output_data = xr.concat(output_list, dim='model', coords='minimal', compat='override')
-    output_data.assign_coords({'model':model_list})
-
-    output_data.to_netcdf("/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_new.nc")    
-    return None
-
-def main_test_vars():
-    models = {"CanESM5":["CCCma", "r1i1p2f1"], "CESM2":["NCAR", "r1i1p1f1"], 'CNRM-CM6-1':['CNRM-CERFACS', 'r1i1p1f2'],
-              #'GISS-E2-1-G':['NASA-GISS', 'r1i1p1f1'], 
-              "HadGEM3-GC31-LL": ["MOHC", "r1i1p1f3"], 'IPSL-CM6A-LR':['IPSL', 'r1i1p1f1'], 
-              #'MIROC6':['MIROC', 'r1i1p1f1'], 
-              "MRI-ESM2-0":["MRI", "r1i1p1f1"],'TaiESM1':['AS-RCEC', 'r1i1p1f1']}
-
-    for mod in models:
-        temp_data = compute_and_regrid_model_data(mod, models[mod])
+    output_data = output_data.assign_coords({'model':model_list})
+    output_data = output_data.drop_dims(['lat_b', 'lon_b'])
+    output_data.to_netcdf("/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_monthly_clouds.nc")    
     return None
 
 main()

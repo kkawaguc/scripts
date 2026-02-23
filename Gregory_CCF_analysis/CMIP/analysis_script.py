@@ -64,6 +64,32 @@ def global_mean_plot(SW_full, LW_full, SW_sub, LW_sub, var=['ts', 'eislts'], nam
     fig.savefig(name+'_global_mean.png')
     return None
 
+def global_mean_bar_plot(net_data):
+    global_mean_data = glob_mean(net_data)
+    global_mean_ts = global_mean_data.sel({'var':'ts'})
+    global_mean_atmos = global_mean_data.sel({'var':'eislts'})
+    #global_mean_data.sel({'var':['eislts', 'hur700', 'wap500', 'utrh']}).sum('var')
+
+    x = np.arange(len(global_mean_ts))
+    width=0.3
+
+    fig, ax = plt.subplots(figsize=(20, 6), layout='constrained')
+
+    # Plot the two sets of bars side-by-side
+    ax.bar(x - width/2, global_mean_ts, width, label='TS', color='steelblue')
+    ax.bar(x + width/2, global_mean_atmos, width, label='EIS', color='orange')
+
+    # Add a horizontal zero line for clarity
+    ax.axhline(0, color='black', linewidth=1)
+
+    ax.set_xticks(x, labels = model_names, rotation='vertical')
+    ax.set_xlabel("Model")
+    ax.set_ylabel("CCF Feedback ($\\mathrm{W/m^2/K}$)")
+    ax.set_title("CCF cloud feedback estimates")
+    ax.legend()
+    fig.savefig('sst_atmos_bar_plot_ts_eis.png')
+    return None
+
 def spatial_plot(SW_full, LW_full, name=''):
     model_fdbk_data = glob_mean(model_fdbks['lwcld'] +model_fdbks['swcld']).sel({'atmos_mod':model_names})
     estimate_data = (SW_full + LW_full).pad({'lon_out':2}, mode='wrap').assign_coords({'lon_out':np.linspace(-187.5, 187.5, 76)})
@@ -243,6 +269,8 @@ global_mean_plot(SW_CN21_fdbk, LW_CN21_fdbk, SW_CN21_fdbk_subset, LW_CN21_fdbk_s
 global_mean_plot(SW_CN21_fdbk, LW_CN21_fdbk, SW_CN21_fdbk_subset, LW_CN21_fdbk_subset, var=['ts', 'eislts'], name='CN21_replication')        
 global_mean_plot(SW_CN21_fdbk, LW_CN21_fdbk, SW_CN21_fdbk_subset, LW_CN21_fdbk_subset, var=['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='CN21_replication_all_vars') 
 
+global_mean_bar_plot(SW_CN21_fdbk + LW_CN21_fdbk)
+
 spatial_plot(SW_CN21_fdbk, LW_CN21_fdbk, name='dtheta_dCCF')
 
 # %%
@@ -276,3 +304,48 @@ global_mean_plot(SW_dtheta_fdbk, LW_dtheta_fdbk, SW_dtheta_fdbk_subset, LW_dthet
 
 spatial_plot(SW_dtheta_fdbk, LW_dtheta_fdbk, name='dtheta')
 # %%
+
+SW_dCCF_fdbk = (SW_coeffs_physical.sel({'model_nr':'MIROC-ES2L'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_dCCF_fdbk = (LW_coeffs_physical.sel({'model_nr':'MIROC-ES2L'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+
+SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+
+global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_MIROC-ES2L')
+
+# %%
+SW_dCCF_fdbk = (SW_coeffs_physical.sel({'model_nr':'NorESM1-M'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_dCCF_fdbk = (LW_coeffs_physical.sel({'model_nr':'NorESM1-M'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+
+SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+
+global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_NorESM1-M')
+
+# %%
+SW_dCCF_fdbk = (SW_coeffs_physical.sel({'model_nr':'NorESM2-LM'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_dCCF_fdbk = (LW_coeffs_physical.sel({'model_nr':'NorESM2-LM'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+
+SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+
+global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_NorESM2_LM')
+
+# %%
+
+SW_dCCF_fdbk = (SW_coeffs_physical.sel({'model_nr':'NorESM2-MM'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_dCCF_fdbk = (LW_coeffs_physical.sel({'model_nr':'NorESM2-MM'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+
+SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+
+global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_NorESM2_MM')
+
+# %%
+SW_dCCF_fdbk = (SW_coeffs_physical.sel({'model_nr':'MRI-ESM2-0'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_dCCF_fdbk = (LW_coeffs_physical.sel({'model_nr':'MRI-ESM2-0'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+
+SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+
+global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_MRI-ESM2-0')

@@ -1,9 +1,9 @@
-#import xskillscore as xs
+import xskillscore as xs
 import xarray as xr
 import numpy as np
-#import global_land_mask as lm
-#import easyclimate.core.utility as utility
-#import easyclimate.field.boundary_layer.aerobulk as aerobulk
+import global_land_mask as lm
+import easyclimate.core.utility as utility
+import easyclimate.field.boundary_layer.aerobulk as aerobulk
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import scipy as sp
@@ -14,10 +14,12 @@ def calc_land_mask(data):
         data - any gridded data to calculate the mask from
     Returns:
         mask - land mask with ocean == True'''
+    print(data.lat)
     lon_pts, lat_pts = np.meshgrid(data.lon, data.lat)
     lon_pts = np.where(lon_pts > 180, lon_pts - 360, lon_pts)
     lon_transform = xr.where(data.lon > 180, data.lon - 360, data.lon)
     land_mask = lm.globe.is_ocean(lat_pts, lon_pts)
+    print(data.lat)
     land_mask = xr.DataArray(land_mask, coords = {"lat": data.lat, "lon": lon_transform})
     land_mask = utility.transfer_xarray_lon_from180TO360(land_mask)
     return land_mask
@@ -184,7 +186,7 @@ def calc_vapor_pressure(temp):
 
 def q2dpt(q, ps):
     '''Calculates the dew point from the specific humidity'''
-    w = q/1-q
+    w = q/(1-q)
     vp = w * ps/ (0.622 + w)
     dpt = vp2dpt(vp)
     return dpt
@@ -257,7 +259,7 @@ def SR21(temp, q, tcwv, ps, theta=40.3, ppm = 280):
     Returns:
         L_clr - estimated clear-sky downwelling longwave (W/m^2)'''
     sigma = 5.67e-8
-    SR21_data = sp.io.loadmat("/gws/nopw/j04/csgap/kkawaguchi/KSR24_data/data.mat")
+    SR21_data = sp.io.loadmat("/gws/ssde/j25a/csgap/kkawaguchi/KSR24_data/data.mat")
     Heff_lookup = SR21_data['Heff']
     q_lookup = SR21_data['q']
     if ppm == 280:
