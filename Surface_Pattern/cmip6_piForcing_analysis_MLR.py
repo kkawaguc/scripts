@@ -76,8 +76,8 @@ def SST_sharp_contribution(X, Y):
         Y: the regressand
     Outputs:
         SST_sharp_coef: contribution from one standard deviation of SST sharp'''
-    Y_anom = Y
-    T_coef, SST_sharp_coef, intercept = xr.apply_ufunc(fit_lr, X, Y_anom.chunk({'time':-1}), 
+    Y_anom = Y.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
+    T_coef, SST_sharp_coef, intercept = xr.apply_ufunc(fit_lr, X, Y_anom, 
                input_core_dims=[['vars','time'], ['time']], output_core_dims=[[], [], []], 
                vectorize=True, dask='parallelized',
                output_dtypes=[float, float, float])
@@ -170,7 +170,8 @@ fig1a = sst_sharp_data['ts'].mean('model')
 TOA_plot = sst_sharp_data['TOA'].mean('model')
 SFC_plot = sst_sharp_data['SFC'].mean('model')
 
-#print(glob_mean(TOA_plot).compute())
+print(glob_mean(TOA_plot).compute())
+print(glob_mean(sst_sharp_data['SFC_rad'].mean('model')).compute())
 #toa_data = monthly_data['TOA'].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
 #toa_slope = xs.linslope(normed_SST_sharp_anomaly, toa_data, dim='time')
 #print(glob_mean(toa_slope).std('model').compute())
@@ -202,8 +203,7 @@ ax4[0].set_title('f) Zonal mean temperature')
 #ax4[0].set_xlabel('Climatological ascent fraction')
 #ax4[0].set_ylabel('Change in ascent fraction (1 std)')
 
-slp_anomaly = monthly_data['SLP'].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-slp_slope = xs.linslope(normed_SST_sharp_anomaly, slp_anomaly, dim='time')
+slp_slope = sst_sharp_data['SLP']
 
 clim_walker = Walker_strength(monthly_data['SLP'].mean('time'))
 diff_walker = Walker_strength(slp_slope)
@@ -274,7 +274,7 @@ sfc_kern = sfc_kern.to_dataarray(dim='component')
 
 fig2_data = fig2_process()
 
-fig2 = fig2_data.plot(col='loc', row='component', cmap='bwr', aspect=1.6,
+fig2 = fig2_data.mean('model').plot(col='loc', row='component', cmap='bwr', aspect=1.6,
                       transform=ccrs.PlateCarree(), subplot_kws={'projection':ccrs.Robinson(central_longitude=210)})
 
 for ax in fig2.axes.flat:
@@ -282,35 +282,42 @@ for ax in fig2.axes.flat:
 
 fig2.fig.savefig('Plots/Plot2b_MLR.png')
 
-print(glob_mean(fig2_data.compute()))
-fig2_data.close()
-# %%
+print(glob_mean(fig2_data.mean('model').compute()))
 
-#def fig2_std_process():
-#    toa_anomaly = toa_kern.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-#    toa = xs.linslope(normed_SST_sharp_anomaly, toa_anomaly, dim='time')
-#    sfc_anomaly = sfc_kern.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-#    sfc = xs.linslope(normed_SST_sharp_anomaly, sfc_anomaly, dim='time')
-#    atm = toa - sfc
-#    return xr.concat([toa, atm, sfc], pd.Index(['TOA', 'ATM', 'SFC'], name='loc')).std('model')
+fig2_std = fig2_data.std('model').plot(col='loc', row='component', aspect=1.6,
+                      transform=ccrs.PlateCarree(), subplot_kws={'projection':ccrs.Robinson(central_longitude=210)})
 
-#fig2_std_data = fig2_std_process()
+for ax in fig2_std.axes.flat:
+    ax.coastlines()
 
-#fig2_std = fig2_std_data.plot(col='loc', row='component', aspect=1.6,
-#                      transform=ccrs.PlateCarree(), subplot_kws={'projection':ccrs.Robinson(central_longitude=210)})
+fig2_std.fig.savefig('Plots/Plot2_std_MLR.png')
 
-#for ax in fig2_std.axes.flat:
-#    ax.coastlines()
+SW_cld = fig2_data.sel({'component':'CLD_SW', 'loc':'TOA'})
+LW_cld = fig2_data.sel({'component':'CLD_LW', 'loc':'TOA'})
 
-#fig2_std.fig.savefig('Plots/Plot2_std.png')
+low_clouds = xr.where(np.tan(np.radians(22.5))*abs(SW_cld) > abs(LW_cld), SW_cld + LW_cld, 0)
+nonlow_clouds = xr.where(np.tan(np.radians(22.5))*abs(SW_cld) < abs(LW_cld), SW_cld + LW_cld, 0)
 
+low_clds = low_clouds.plot(col='model', col_wrap=4,aspect=1.6,
+                      transform=ccrs.PlateCarree(), subplot_kws={'projection':ccrs.Robinson(central_longitude=210)})
+for ax in low_clds.axes.flat:
+    ax.coastlines()
+
+nonlow_clds = nonlow_clouds.plot(col='model', col_wrap=4,aspect=1.6,
+                      transform=ccrs.PlateCarree(), subplot_kws={'projection':ccrs.Robinson(central_longitude=210)})
+for ax in nonlow_clds.axes.flat:
+    ax.coastlines()
+
+low_clds.fig.savefig('Plots/lowclds.png')
+nonlow_clds.fig.savefig('Plots/nonlowclds.png')
 # %%
 
 annual_data = monthly_data.drop_vars(['ta', 'hus']).resample({'time':'YS'}).mean()
+GMST_annual_anomaly = glob_mean(annual_data['tas'])
 annual_data['SFC_SWCRE'] = (annual_data['rsds'] - annual_data['rsus']) - (annual_data['rsdscs'] - annual_data['rsuscs'])
 annual_data['SFC_LWCRE'] = annual_data['rlds'] - annual_data['rldscs']
 annual_sfc_data = annual_data[['SFC', 'SFC_rad', 'SFC_rad_cs', 'hfls', 'hfss', 'SFC_SWCRE', 'SFC_LWCRE']]
-sfc_fdbk = calc_fdbk(annual_sfc_data, GMST_anomaly, yrs=30)
+sfc_fdbk = calc_fdbk(annual_sfc_data, GMST_annual_anomaly, yrs=30)
 
 global_sfc_fdbk = glob_mean(sfc_fdbk)
 
@@ -319,3 +326,5 @@ print(xr.corr(global_sfc_fdbk.sel({'variable':'SFC'}), global_sfc_fdbk, dim='tim
 fig_fdbk = global_sfc_fdbk.plot.line(x='time', row='variable')
 
 fig_fdbk.fig.savefig('Plots/time_evolving_fdbk.png')
+
+#fig_fdbk, ax_fdbk = 
