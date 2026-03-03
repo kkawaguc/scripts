@@ -64,32 +64,6 @@ def global_mean_plot(SW_full, LW_full, SW_sub, LW_sub, var=['ts', 'eislts'], nam
     fig.savefig(name+'_global_mean.png')
     return None
 
-def global_mean_bar_plot(net_data):
-    global_mean_data = glob_mean(net_data)
-    global_mean_ts = global_mean_data.sel({'var':'ts'})
-    global_mean_atmos = global_mean_data.sel({'var':'eislts'})
-    #global_mean_data.sel({'var':['eislts', 'hur700', 'wap500', 'utrh']}).sum('var')
-
-    x = np.arange(len(global_mean_ts))
-    width=0.3
-
-    fig, ax = plt.subplots(figsize=(20, 6), layout='constrained')
-
-    # Plot the two sets of bars side-by-side
-    ax.bar(x - width/2, global_mean_ts, width, label='TS', color='steelblue')
-    ax.bar(x + width/2, global_mean_atmos, width, label='EIS', color='orange')
-
-    # Add a horizontal zero line for clarity
-    ax.axhline(0, color='black', linewidth=1)
-
-    ax.set_xticks(x, labels = model_names, rotation='vertical')
-    ax.set_xlabel("Model")
-    ax.set_ylabel("CCF Feedback ($\\mathrm{W/m^2/K}$)")
-    ax.set_title("CCF cloud feedback estimates")
-    ax.legend()
-    fig.savefig('sst_atmos_bar_plot_ts_eis.png')
-    return None
-
 def spatial_plot(SW_full, LW_full, name=''):
     model_fdbk_data = glob_mean(model_fdbks['lwcld'] +model_fdbks['swcld']).sel({'atmos_mod':model_names})
     estimate_data = (SW_full + LW_full).pad({'lon_out':2}, mode='wrap').assign_coords({'lon_out':np.linspace(-187.5, 187.5, 76)})
@@ -141,35 +115,19 @@ rsdt = rsdt['rsdt'].mean('time').rename({'lat':'lat_in', 'lon':'lon_in'})
 lw_coeffs = xr.open_dataset('/gws/ssde/j25a/csgap/public/ceppi/pnas_2021/coeffs/coeffs_lw.nc')
 sw_coeffs = xr.open_dataset('/gws/ssde/j25a/csgap/public/ceppi/pnas_2021/coeffs/coeffs_sw.nc')
 
-lw_coeffs_observed = lw_coeffs.isel({'model_nr':slice(None, 4)})
-sw_coeffs_observed = sw_coeffs.isel({'model_nr':slice(None, 4)}) * rsdt
+lw_coeffs = lw_coeffs.isel({'model_nr':slice(None, 4)})
+sw_coeffs = sw_coeffs.isel({'model_nr':slice(None, 4)}) * rsdt
 
 observed_names = ['CERES-ERA5', 'CERES-MERRA2', 'CERES-JRA55', 'CERES-CFSR']
-
-lw_coeffs = lw_coeffs.isel({'model_nr':slice(4, None)})
-sw_coeffs = sw_coeffs.isel({'model_nr':slice(4, None)}) * rsdt
-
-model_names = ['ACCESS-CM2','ACCESS-ESM1-5','ACCESS1-0','ACCESS1-3','BCC-CSM2-MR','BCC-ESM1','BNU-ESM','CCSM4',
-               'CESM2-WACCM','CESM2','CNRM-CM5','CNRM-CM6-1','CNRM-ESM2-1','CSIRO-Mk3-6-0','CanESM2','CanESM5',
-               'EC-Earth3-Veg','FGOALS-f3-L','FGOALS-g3','GFDL-CM3','GFDL-CM4','GFDL-ESM2G','GFDL-ESM2M',
-               'GISS-E2-1-G','GISS-E2-H','GISS-E2-R','HadGEM2-ES','HadGEM3-GC31-LL','INM-CM4-8','INM-CM5-0',
-               'IPSL-CM5A-LR','IPSL-CM5A-MR','IPSL-CM5B-LR','IPSL-CM6A-LR','MIROC-ES2L','MIROC-ESM','MIROC5',
-               'MIROC6','MPI-ESM-LR','MPI-ESM-MR','MPI-ESM1-2-HR','MPI-ESM1-2-LR','MRI-CGCM3','MRI-ESM2-0',
-               'NESM3','NorESM1-M','NorESM2-LM','NorESM2-MM','UKESM1-0-LL','bcc-csm1-1-m','bcc-csm1-1','inmcm4']
 
 var_names = ['ts', 'eislts', 'hur700', 'wap500', 'utrh']
 
 lat_coords = np.linspace(-87.5, 87.5, 36)
 lon_coords = np.linspace(-177.5, 177.5, 72)
 
-lw_coeffs = lw_coeffs.assign_coords({'model_nr':model_names, 'var':var_names, 'lat_in':lat_coords, 'lon_in':lon_coords, 
+lw_coeffs = lw_coeffs.assign_coords({'model_nr':observed_names, 'var':var_names, 'lat_in':lat_coords, 'lon_in':lon_coords, 
                                      'lat_out':lat_coords, 'lon_out':lon_coords})
-sw_coeffs = sw_coeffs.assign_coords({'model_nr':model_names, 'var':var_names, 'lat_in':lat_coords, 'lon_in':lon_coords, 
-                                     'lat_out':lat_coords, 'lon_out':lon_coords})
-
-lw_coeffs_observed = lw_coeffs_observed.assign_coords({'model_nr':observed_names, 'var':var_names, 'lat_in':lat_coords, 'lon_in':lon_coords, 
-                                     'lat_out':lat_coords, 'lon_out':lon_coords})
-sw_coeffs_observed = sw_coeffs_observed.assign_coords({'model_nr':observed_names, 'var':var_names, 'lat_in':lat_coords, 'lon_in':lon_coords, 
+sw_coeffs = sw_coeffs.assign_coords({'model_nr':observed_names, 'var':var_names, 'lat_in':lat_coords, 'lon_in':lon_coords, 
                                      'lat_out':lat_coords, 'lon_out':lon_coords})
 
 
@@ -209,44 +167,31 @@ model_feedbacks = xr.concat([CMIP5_model_feedbacks, CMIP6_model_feedbacks], dim=
 
 # %%
 #Import the model standard deviations
-cmip5_std_dir = os.listdir('/gws/ssde/j25a/csgap/ceppi/data/cmip5/5x5/sd/')
+reanalysis_list = ['era5', 'merra2', 'jra-55', 'cfsr']
+std_list = []
 
-cmip5_std_list = []
-cmip5_std_filenames = []
+for item in reanalysis_list:
+    temp = xr.open_dataset('/gws/ssde/j25a/csgap/ceppi/data/'+item+'/5x5/sd.nc')
+    std_list.append(temp)
 
-for item in cmip5_std_dir:
-    if 'historical-rcp45' in item and 'anom' not in item:
-        cmip5_std_list.append(item[:-20])
-        cmip5_std_filenames.append('/gws/ssde/j25a/csgap/ceppi/data/cmip5/5x5/sd/'+item)
+CCF_std = xr.concat(std_list, dim=pd.Index(['CERES-ERA5', 'CERES-MERRA2', 'CERES-JRA55', 'CERES-CFSR'], name='model_nr'))
 
-CMIP5_CCF_std = xr.open_mfdataset(cmip5_std_filenames, combine = 'nested', 
-                                  concat_dim=[pd.Index(cmip5_std_list, name="atmos_mod")], coords="minimal", 
-                                  compat="override",combine_attrs = "drop")
-
-
-cmip6_std_dir = os.listdir('/gws/ssde/j25a/csgap/ceppi/data/cmip6/5x5/sd/')
-
-cmip6_std_list = []
-cmip6_std_filenames = []
-
-for item in cmip6_std_dir:
-    if 'historical-ssp' in item and 'anom' not in item:
-        cmip6_std_list.append(item[:-18])
-        cmip6_std_filenames.append('/gws/ssde/j25a/csgap/ceppi/data/cmip6/5x5/sd/'+item)
-
-CMIP6_CCF_std = xr.open_mfdataset(cmip6_std_filenames, combine = 'nested', 
-                                  concat_dim=[pd.Index(cmip6_std_list, name="atmos_mod")], coords="minimal", 
-                                  compat="override",combine_attrs = "drop")
 # %%
+
+model_names = ['ACCESS-CM2','ACCESS-ESM1-5','ACCESS1-0','ACCESS1-3','BCC-CSM2-MR','BCC-ESM1','BNU-ESM','CCSM4',
+               'CESM2-WACCM','CESM2','CNRM-CM5','CNRM-CM6-1','CNRM-ESM2-1','CSIRO-Mk3-6-0','CanESM2','CanESM5',
+               'EC-Earth3-Veg','FGOALS-f3-L','FGOALS-g3','GFDL-CM3','GFDL-CM4','GFDL-ESM2G','GFDL-ESM2M',
+               'GISS-E2-1-G','GISS-E2-H','GISS-E2-R','HadGEM2-ES','HadGEM3-GC31-LL','INM-CM4-8','INM-CM5-0',
+               'IPSL-CM5A-LR','IPSL-CM5A-MR','IPSL-CM5B-LR','IPSL-CM6A-LR','MIROC-ES2L','MIROC-ESM','MIROC5',
+               'MIROC6','MPI-ESM-LR','MPI-ESM-MR','MPI-ESM1-2-HR','MPI-ESM1-2-LR','MRI-CGCM3','MRI-ESM2-0',
+               'NESM3','NorESM1-M','NorESM2-LM','NorESM2-MM','UKESM1-0-LL','bcc-csm1-1-m','bcc-csm1-1','inmcm4']
 
 # Concatenate the model feedbacks and the standard deviations
 model_fdbks = xr.concat([CMIP5_model_feedbacks, CMIP6_model_feedbacks], dim='atmos_mod')
 model_fdbks = model_fdbks.sel({'atmos_mod':model_names})
 model_fdbks_CCF = model_fdbks[['ts', 'eislts', 'hur700', 'wap500', 'utrh']].to_dataarray('var')
 
-CCF_std = xr.concat([CMIP5_CCF_std, CMIP6_CCF_std], dim='atmos_mod')
 CCF_std = CCF_std[['ts', 'eislts', 'hur700', 'wap500', 'utrh']].to_dataarray('var').rename({'lat':'lat_in', 'lon':'lon_in'})
-CCF_std = CCF_std.rename({'atmos_mod':'model_nr'})
 # %%
 
 # Calculate the sensitivities in physical units:
@@ -276,21 +221,23 @@ glob_EIS = glob_mean(EIS_ocean, bnds=50)
 
 # Initial testing: 
 
-SW_CN21_fdbk = (SW_coeffs_physical * model_fdbks_CCF.rename({'atmos_mod':'model_nr', 'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
-LW_CN21_fdbk = (LW_coeffs_physical * model_fdbks_CCF.rename({'atmos_mod':'model_nr', 'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+SW_CN21_fdbk = (SW_coeffs_physical * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_CN21_fdbk = (LW_coeffs_physical * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+SW_CN21_fdbk_subset = SW_CN21_fdbk.sel({'atmos_mod':pattern_models})
+LW_CN21_fdbk_subset = LW_CN21_fdbk.sel({'atmos_mod':pattern_models})
 
 #%%
 
-SW_CN21_fdbk_subset = SW_CN21_fdbk.sel({'model_nr':pattern_models})
-LW_CN21_fdbk_subset = LW_CN21_fdbk.sel({'model_nr':pattern_models})
+for reanalysis_name in observed_names:
+    global_mean_plot(SW_CN21_fdbk.sel({'model_nr':reanalysis_name}), LW_CN21_fdbk.sel({'model_nr':reanalysis_name}), 
+                     SW_CN21_fdbk_subset.sel({'model_nr':reanalysis_name}), LW_CN21_fdbk_subset.sel({'model_nr':reanalysis_name}), var='ts', name=reanalysis_name+'_ts')
+    global_mean_plot(SW_CN21_fdbk.sel({'model_nr':reanalysis_name}), LW_CN21_fdbk.sel({'model_nr':reanalysis_name}), 
+                     SW_CN21_fdbk_subset.sel({'model_nr':reanalysis_name}), LW_CN21_fdbk_subset.sel({'model_nr':reanalysis_name}), var=['ts', 'eislts'], name=reanalysis_name+'eis_ts')        
+    global_mean_plot(SW_CN21_fdbk.sel({'model_nr':reanalysis_name}), LW_CN21_fdbk.sel({'model_nr':reanalysis_name}),
+                     SW_CN21_fdbk_subset.sel({'model_nr':reanalysis_name}), LW_CN21_fdbk_subset.sel({'model_nr':reanalysis_name}), 
+                     var=['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name=reanalysis_name+'_all_vars') 
 
-global_mean_plot(SW_CN21_fdbk, LW_CN21_fdbk, SW_CN21_fdbk_subset, LW_CN21_fdbk_subset, var='ts', name='CN21_replication_ts')
-global_mean_plot(SW_CN21_fdbk, LW_CN21_fdbk, SW_CN21_fdbk_subset, LW_CN21_fdbk_subset, var=['ts', 'eislts'], name='CN21_replication')        
-global_mean_plot(SW_CN21_fdbk, LW_CN21_fdbk, SW_CN21_fdbk_subset, LW_CN21_fdbk_subset, var=['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='CN21_replication_all_vars') 
 
-global_mean_bar_plot(SW_CN21_fdbk + LW_CN21_fdbk)
-
-spatial_plot(SW_CN21_fdbk, LW_CN21_fdbk, name='dtheta_dCCF')
 
 # %%
 ts_theta = glob_mean(SW_CN21_fdbk.sel({'var':'ts'}) + LW_CN21_fdbk.sel({'var':'ts'}))

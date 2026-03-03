@@ -123,21 +123,21 @@ CMIP6_CCF_std = xr.open_mfdataset(cmip6_std_filenames, combine = 'nested',
 CCF_std = xr.concat([CMIP5_CCF_std, CMIP6_CCF_std], dim='model')
 CCF_std = CCF_std[['ts', 'eislts', 'hur700', 'wap500', 'utrh']].to_dataarray('var').rename({'lat':'lat_in', 'lon':'lon_in'})
 
-def glob_mean(data):
+def glob_mean(data, bnds=90):
     if 'lat_out' in data.dims:
         lat_weights = np.cos(np.radians(data.lat_out))
-        return data.weighted(lat_weights).mean(('lat_out', 'lon_out'))
+        return data.sel({'lat':slice(-bnds, bnds)}).weighted(lat_weights).mean(('lat_out', 'lon_out'))
     else:
         lat_weights = np.cos(np.radians(data.lat))
-        return data.weighted(lat_weights).mean(('lat', 'lon'))
+        return data.sel({'lat':slice(-bnds, bnds)}).weighted(lat_weights).mean(('lat', 'lon'))
 
 # Calculate the sensitivities in physical units:
 
-SW_coeffs_physical=(-sw_coeffs/CCF_std).sel({'model_nr':combined_model_list})
-LW_coeffs_physical=(lw_coeffs/CCF_std).sel({'model_nr':combined_model_list})
+SW_coeffs_physical=(-sw_coeffs/CCF_std).sel({'model':combined_model_list})
+LW_coeffs_physical=(lw_coeffs/CCF_std).sel({'model':combined_model_list})
 
-SW_coeffs_physical_MIROC_ES2L = (-sw_coeffs/CCF_std).sel({'model_nr':'MIROC-ES2L'})
-LW_coeffs_physical_MIROC_ES2L = (lw_coeffs/CCF_std).sel({'model_nr':'MIROC-ES2L'})
+SW_coeffs_physical_MIROC_ES2L = (-sw_coeffs/CCF_std).sel({'model':'MIROC-ES2L'})
+LW_coeffs_physical_MIROC_ES2L = (lw_coeffs/CCF_std).sel({'model':'MIROC-ES2L'})
 # %%
 HadAM3_data = HadAM3_data.sel({'model':combined_model_list})
 
@@ -205,3 +205,5 @@ global_mean_plot(SW_dCCF_NorESM2, LW_dCCF_NorESM2, name='HadAM3_dCCF_NorESM2')
 SW_dCCF_MRI = (HadAM3_data * SW_coeffs_physical_MIROC_ES2L).sum(('lat_in', 'lon_in'))
 LW_dCCF_MRI = (HadAM3_data * LW_coeffs_physical_MIROC_ES2L).sum(('lat_in', 'lon_in'))
 global_mean_plot(SW_dCCF_MRI, LW_dCCF_MRI, name='HadAM3_dCCF_MIROC_ES2L')
+
+

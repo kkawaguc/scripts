@@ -7,6 +7,7 @@ import xskillscore as xs
 import cartopy.crs as ccrs
 import pandas as pd
 import xesmf as xe
+from sklearn.linear_model import LinearRegression
 
 # %%
 def glob_mean(data):
@@ -55,6 +56,34 @@ def regrid_data(model_data):
 
 def calc_anomaly(x):
     return (x - x.mean(dim='time'))
+
+def fit_lr(x, y):
+    # x, y are 1D arrays along "time"
+    maskx = np.isfinite(x) & np.isfinite(y)
+    masky = np.isfinite(y)
+    if masky.sum() < 2:
+        return (np.nan, np.nan, np.nan)  # slope, intercept
+
+    model = LinearRegression()
+    model.fit(x[maskx].reshape(2, -1).T, 
+              y[masky].reshape(-1))
+    return (model.coef_[0].item(), model.coef_[1].item(),model.intercept_.item())
+
+def SST_sharp_contribution(X, Y):
+    '''Calculates the contribution to a given quantity from SST sharp
+    Inputs:
+        X: the regressor variables (GMST and SST sharp in standard deviation units)
+        Y: the regressand
+    Outputs:
+        SST_sharp_coef: contribution from one standard deviation of SST sharp'''
+    Y_anom = Y
+    T_coef, SST_sharp_coef, intercept = xr.apply_ufunc(fit_lr, X, Y_anom.chunk({'time':-1}), 
+               input_core_dims=[['vars','time'], ['time']], output_core_dims=[[], [], []], 
+               vectorize=True, dask='parallelized',
+               output_dtypes=[float, float, float])
+    return SST_sharp_coef
+
+
 # %%
 
 monthly_data = xr.open_dataset('/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_new_monthly.nc', chunks={'time':-1, 'lat':24, 'lon':24, 'model':1})
@@ -87,38 +116,34 @@ normed_SST_sharp_anomaly = xr.open_dataarray('/gws/ssde/j25a/csgap/kkawaguchi/su
 # %%
 
 #Calculate normalised SST#. 
-tropical_SST = ocean_data['ts'].sel({'lat':slice(-30, 30)})
-SST_sharp_threshold = tropical_SST.compute().weighted(lat_weighting).quantile(0.7, dim=('lat', 'lon'))
-SST_sharp_raw = (xr.where(tropical_SST > SST_sharp_threshold, tropical_SST, np.nan).weighted(lat_weighting).mean(('lat', 'lon'))
-                 - tropical_SST.weighted(lat_weighting).mean(('lat', 'lon')))
+#tropical_SST = ocean_data['ts'].sel({'lat':slice(-30, 30)})
+#SST_sharp_threshold = tropical_SST.compute().weighted(lat_weighting).quantile(0.7, dim=('lat', 'lon'))
+#SST_sharp_raw = (xr.where(tropical_SST > SST_sharp_threshold, tropical_SST, np.nan).weighted(lat_weighting).mean(('lat', 'lon'))
+#                 - tropical_SST.weighted(lat_weighting).mean(('lat', 'lon')))
 
-SST_sharp_anomaly = SST_sharp_raw.groupby('time.month').map(calc_anomaly)
-monthly_data = monthly_data.assign_coords({'T':normed_GMST_anomaly, 'SST_sharp':normed_SST_sharp_anomaly})
+#SST_sharp_anomaly = SST_sharp_raw.groupby('time.month').map(calc_anomaly)
+#monthly_data = monthly_data.assign_coords({'T':normed_GMST_anomaly, 'SST_sharp':normed_SST_sharp_anomaly})
 
+regressor_variables = xr.concat([normed_GMST_anomaly, normed_SST_sharp_anomaly], dim=pd.Index(['T', 'SST_sharp'], name='vars')).compute()
 
-#tropical_SST_anomaly = tropical_SST.groupby('time.month').map(calc_anomaly)
-#print(SST_sharp_anomaly.std('time').mean('model').compute())
-#print(glob_mean(tropical_SST_anomaly).std('time').mean('model').compute())
-#normed_SST_sharp_anomaly = SST_sharp_anomaly/SST_sharp_anomaly.std('time')
-
-#normed_SST_sharp_anomaly.to_netcdf('/gws/ssde/j25a/csgap/kkawaguchi/surface_data/sst_sharp_idx.nc')
-# %%
 
 #Plot 1: Show the surface temperature and circulation responses to the change in SST#
 
-def fig1_process(var_name):
-    if var_name == 'ts':
-        var_anomaly = ocean_data[var_name].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-    else:
-        var_anomaly = monthly_data[var_name].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-    return xs.linslope(normed_SST_sharp_anomaly, var_anomaly, dim='time').mean('model')
+#def fig1_process(var_name):
+#    if var_name == 'ts':
+#        var_anomaly = ocean_data[var_name].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
+#    else:
+#        var_anomaly = monthly_data[var_name].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
+#    return xs.linslope(normed_SST_sharp_anomaly, var_anomaly, dim='time').mean('model')
+
+sst_sharp_data = SST_sharp_contribution(regressor_variables, monthly_data)
 
 wap = xr.open_dataset("/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_monthly_clouds.nc")
 
 wap = wap['wap'].sel({'plev':50000})
 wap_clim = wap.mean('time')
-wap_anomaly = wap.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-dwapdSST = xs.linslope(normed_SST_sharp_anomaly, wap_anomaly, dim='time')
+
+dwapdSST = SST_sharp_contribution(regressor_variables, wap)
 
 #wap_clim_land = xr.where(land_mask == True, wap_clim, np.nan).sel({'lat':slice(-30, 30)})
 #dwapdSST_land = xr.where(land_mask == True, dwapdSST, np.nan).sel({'lat':slice(-30, 30)})
@@ -132,25 +157,23 @@ dwapdSST = xs.linslope(normed_SST_sharp_anomaly, wap_anomaly, dim='time')
 tropical_q250 = monthly_data['hus'].sel({'plev':25000, 'lat':slice(-30, 30)})
 tropical_T250 = monthly_data['ta'].sel({'plev':25000, 'lat':slice(-30, 30)})
 tropical_RH250 = calc_relhum(tropical_T250, tropical_q250, 25000)
-RH250_anomaly = tropical_RH250.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-RH250_dSST = xs.linslope(normed_SST_sharp_anomaly, RH250_anomaly, dim='time')
+RH250_dSST = SST_sharp_contribution(regressor_variables, tropical_RH250)
 
-ta_anomaly = monthly_data['ta'].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-ta_dSST = xs.linslope(normed_SST_sharp_anomaly, ta_anomaly, dim='time')
+ta_dSST = sst_sharp_data['ta']
 #%%
 
 
 fig1 = plt.figure(layout='constrained', figsize=(10,8))
 subfigs1 = fig1.subfigures(3, 1, height_ratios=[1.3, 1, 1.2])
 
-fig1a = fig1_process('ts')
-TOA_plot = fig1_process('TOA')
-SFC_plot = fig1_process('SFC')
+fig1a = sst_sharp_data['ts'].mean('model')
+TOA_plot = sst_sharp_data['TOA'].mean('model')
+SFC_plot = sst_sharp_data['SFC'].mean('model')
 
-print(glob_mean(TOA_plot).compute())
-toa_data = monthly_data['TOA'].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-toa_slope = xs.linslope(normed_SST_sharp_anomaly, toa_data, dim='time')
-print(glob_mean(toa_slope).std('model').compute())
+#print(glob_mean(TOA_plot).compute())
+#toa_data = monthly_data['TOA'].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
+#toa_slope = xs.linslope(normed_SST_sharp_anomaly, toa_data, dim='time')
+#print(glob_mean(toa_slope).std('model').compute())
 
 ax1_1 = subfigs1[0].subplots(1, 3, subplot_kw={'projection':ccrs.Robinson(central_longitude=210)})
 fig1a.plot(ax=ax1_1[0], vmin=-0.3, vmax=0.3, cmap='bwr',transform=ccrs.PlateCarree(), cbar_kwargs={'orientation':'horizontal', 'label':'$\\mathrm{K/\\sigma}$'})
@@ -196,7 +219,7 @@ for i in range(3):
     if i != 2:
         ax1_2[i].coastlines()
 
-fig1.savefig('Plots/Plot1.png')
+fig1.savefig('Plots/Plot1_MLR.png')
 
 # %%
 
@@ -215,10 +238,8 @@ fig1.savefig('Plots/Plot1.png')
 #sfc_kern = sfc_kern.to_dataarray(dim='component')
 
 def fig2_process():
-    toa_anomaly = toa_kern.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-    toa = xs.linslope(normed_SST_sharp_anomaly, toa_anomaly, dim='time').mean('model')
-    sfc_anomaly = sfc_kern.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-    sfc = xs.linslope(normed_SST_sharp_anomaly, sfc_anomaly, dim='time').mean('model')
+    toa = SST_sharp_contribution(regressor_variables, toa_kern)
+    sfc = SST_sharp_contribution(regressor_variables, sfc_kern)
     atm = toa - sfc
     return xr.concat([toa, atm, sfc], pd.Index(['TOA', 'ATM', 'SFC'], name='loc'))
 
@@ -259,7 +280,7 @@ fig2 = fig2_data.plot(col='loc', row='component', cmap='bwr', aspect=1.6,
 for ax in fig2.axes.flat:
     ax.coastlines()
 
-fig2.fig.savefig('Plots/Plot2b.png')
+fig2.fig.savefig('Plots/Plot2b_MLR.png')
 
 print(glob_mean(fig2_data.compute()))
 fig2_data.close()
@@ -289,7 +310,7 @@ annual_data = monthly_data.drop_vars(['ta', 'hus']).resample({'time':'YS'}).mean
 annual_data['SFC_SWCRE'] = (annual_data['rsds'] - annual_data['rsus']) - (annual_data['rsdscs'] - annual_data['rsuscs'])
 annual_data['SFC_LWCRE'] = annual_data['rlds'] - annual_data['rldscs']
 annual_sfc_data = annual_data[['SFC', 'SFC_rad', 'SFC_rad_cs', 'hfls', 'hfss', 'SFC_SWCRE', 'SFC_LWCRE']]
-sfc_fdbk = calc_fdbk(annual_sfc_data, tas_data, yrs=30)
+sfc_fdbk = calc_fdbk(annual_sfc_data, GMST_anomaly, yrs=30)
 
 global_sfc_fdbk = glob_mean(sfc_fdbk)
 
