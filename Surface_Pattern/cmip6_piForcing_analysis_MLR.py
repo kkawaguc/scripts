@@ -84,6 +84,7 @@ def SST_sharp_contribution(X, Y):
     return SST_sharp_coef
 
 
+
 # %%
 
 monthly_data = xr.open_dataset('/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_new_monthly.nc', chunks={'time':-1, 'lat':24, 'lon':24, 'model':1})
@@ -171,7 +172,9 @@ TOA_plot = sst_sharp_data['TOA'].mean('model')
 SFC_plot = sst_sharp_data['SFC'].mean('model')
 
 print(glob_mean(TOA_plot).compute())
+print(glob_mean(sst_sharp_data['TOA'].quantile([0.17, 0.25, 0.75, 0.83], dim='model')).compute())
 print(glob_mean(sst_sharp_data['SFC_rad'].mean('model')).compute())
+print(glob_mean(sst_sharp_data['SFC_rad'].quantile([0.17, 0.25, 0.75, 0.83], dim='model')).compute())
 #toa_data = monthly_data['TOA'].groupby('time.month').map(calc_anomaly).chunk({'time':-1})
 #toa_slope = xs.linslope(normed_SST_sharp_anomaly, toa_data, dim='time')
 #print(glob_mean(toa_slope).std('model').compute())
@@ -283,6 +286,7 @@ for ax in fig2.axes.flat:
 fig2.fig.savefig('Plots/Plot2b_MLR.png')
 
 print(glob_mean(fig2_data.mean('model').compute()))
+print(glob_mean(fig2_data.quantile([0.17, 0.25, 0.75, 0.83], dim='model').compute()))
 
 fig2_std = fig2_data.std('model').plot(col='loc', row='component', aspect=1.6,
                       transform=ccrs.PlateCarree(), subplot_kws={'projection':ccrs.Robinson(central_longitude=210)})
