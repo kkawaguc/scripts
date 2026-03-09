@@ -69,7 +69,7 @@ def fit_lr(x, y):
               y[masky].reshape(-1))
     return (model.coef_[0].item(), model.coef_[1].item(),model.intercept_.item())
 
-def SST_sharp_contribution(X, Y):
+def SST_sharp_contribution(X, Y, return_val='SST_sharp'):
     '''Calculates the contribution to a given quantity from SST sharp
     Inputs:
         X: the regressor variables (GMST and SST sharp in standard deviation units)
@@ -77,13 +77,26 @@ def SST_sharp_contribution(X, Y):
     Outputs:
         SST_sharp_coef: contribution from one standard deviation of SST sharp'''
     Y_anom = Y.groupby('time.month').map(calc_anomaly).chunk({'time':-1})
-    T_coef, SST_sharp_coef, intercept = xr.apply_ufunc(fit_lr, X, Y_anom, 
+    X_anom_rolling = X.rolling(dim={'time':7}, center=True).mean().dropna('time', how='all').chunk({'time':-1})
+    Y_anom_rolling = Y_anom.rolling(dim={'time':7}, center=True).mean().dropna('time', how='all').chunk({'time':-1})
+    print(X_anom_rolling)
+    print(Y_anom_rolling)
+    T_coef, SST_sharp_coef, intercept = xr.apply_ufunc(fit_lr, X_anom_rolling, Y_anom_rolling, 
                input_core_dims=[['vars','time'], ['time']], output_core_dims=[[], [], []], 
                vectorize=True, dask='parallelized',
                output_dtypes=[float, float, float])
-    return SST_sharp_coef
-
-
+    fit = T_coef * X_anom_rolling.sel({'vars':'T'}) + SST_sharp_coef * X_anom_rolling.sel({'vars':'SST_sharp'}) + intercept
+    if return_val == 'SST_sharp':
+        return SST_sharp_coef
+    elif return_val == 'T':
+        return T_coef
+    elif return_val == 'intercept':
+        return intercept
+    elif return_val == 'fit':
+        return xr.corr(fit, Y_anom_rolling, dim='time')
+    else:
+        print('return_val must be one of SST_sharp, T, intercept or fit')
+        return None
 
 # %%
 
@@ -138,6 +151,44 @@ regressor_variables = xr.concat([normed_GMST_anomaly, normed_SST_sharp_anomaly],
 #    return xs.linslope(normed_SST_sharp_anomaly, var_anomaly, dim='time').mean('model')
 
 sst_sharp_data = SST_sharp_contribution(regressor_variables, monthly_data)
+check_fit_ts = SST_sharp_contribution(regressor_variables, monthly_data['ts'], return_val='fit')
+check_fit_TOA = SST_sharp_contribution(regressor_variables, monthly_data['TOA'], return_val='fit')
+check_fit_SFC = SST_sharp_contribution(regressor_variables, monthly_data['SFC'], return_val='fit')
+T_mediated_data = SST_sharp_contribution(regressor_variables, monthly_data[['ts','TOA', 'SFC']], return_val='T')
+
+check_fit_fig, check_fit_ax = plt.subplots(nrows=3, figsize=(5, 8), layout='constrained', subplot_kw={'projection':ccrs.Robinson(central_longitude=210)})
+check_fit_ts.mean('model').plot(ax=check_fit_ax[0], transform=ccrs.PlateCarree())
+check_fit_TOA.mean('model').plot(ax=check_fit_ax[1], transform=ccrs.PlateCarree())
+check_fit_SFC.mean('model').plot(ax=check_fit_ax[2], transform=ccrs.PlateCarree())
+for i in range(3):
+    check_fit_ax[i].coastlines()
+check_fit_ax[0].set_title('Surface Temperature')
+check_fit_ax[1].set_title('TOA')
+check_fit_ax[2].set_title('SFC')
+check_fit_fig.suptitle('Model-mean correlation with predictors')
+
+check_fit_fig.savefig('Plots/check_fit.png')
+
+# %%
+
+fig1, ax1 = plt.subplots(nrows=3, ncols=2, figsize=(10, 12), layout='constrained', subplot_kw={'projection':ccrs.Robinson(central_longitude=210)})
+T_mediated_data['ts'].mean('model').plot(ax=ax1[0, 0], transform=ccrs.PlateCarree())
+T_mediated_data['TOA'].mean('model').plot(ax=ax1[1, 0], transform=ccrs.PlateCarree())
+T_mediated_data['SFC'].mean('model').plot(ax=ax1[2, 0], transform=ccrs.PlateCarree())
+sst_sharp_data['ts'].mean('model').plot(ax=ax1[0, 1], transform=ccrs.PlateCarree())
+sst_sharp_data['TOA'].mean('model').plot(ax=ax1[1, 1], transform=ccrs.PlateCarree())
+sst_sharp_data['SFC'].mean('model').plot(ax=ax1[2, 1], transform=ccrs.PlateCarree())
+
+for i in range(3):
+    ax1[i, 0].coastlines()
+    ax1[i,1].coastlines()
+
+ax1[0, 0].set_title('T_mediated')
+ax1[0, 1].set_title('SST# mediated')
+
+
+
+fig1.savefig('Plots/sst_sharp_T_mediated.png')
 
 wap = xr.open_dataset("/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_monthly_clouds.nc")
 
@@ -327,7 +378,7 @@ global_sfc_fdbk = glob_mean(sfc_fdbk)
 
 global_sfc_fdbk = global_sfc_fdbk.to_dataarray()
 print(xr.corr(global_sfc_fdbk.sel({'variable':'SFC'}), global_sfc_fdbk, dim='time').compute())
-fig_fdbk = global_sfc_fdbk.plot.line(x='time', row='variable')
+fig_fdbk = global_sfc_fdbk.plot.line(x='time', col='variable', col_wrap=2)
 
 fig_fdbk.fig.savefig('Plots/time_evolving_fdbk.png')
 
