@@ -286,6 +286,7 @@ fig2_data.close()
 # %%
 
 annual_data = monthly_data.drop_vars(['ta', 'hus']).resample({'time':'YS'}).mean()
+tas_data = glob_mean(annual_data['tas'])
 annual_data['SFC_SWCRE'] = (annual_data['rsds'] - annual_data['rsus']) - (annual_data['rsdscs'] - annual_data['rsuscs'])
 annual_data['SFC_LWCRE'] = annual_data['rlds'] - annual_data['rldscs']
 annual_sfc_data = annual_data[['SFC', 'SFC_rad', 'SFC_rad_cs', 'hfls', 'hfss', 'SFC_SWCRE', 'SFC_LWCRE']]

@@ -8,18 +8,17 @@ import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import scipy as sp
 
+
 def calc_land_mask(data):
     '''Calculate a land mask
     Inputs:
         data - any gridded data to calculate the mask from
     Returns:
         mask - land mask with ocean == True'''
-    print(data.lat)
     lon_pts, lat_pts = np.meshgrid(data.lon, data.lat)
     lon_pts = np.where(lon_pts > 180, lon_pts - 360, lon_pts)
     lon_transform = xr.where(data.lon > 180, data.lon - 360, data.lon)
     land_mask = lm.globe.is_ocean(lat_pts, lon_pts)
-    print(data.lat)
     land_mask = xr.DataArray(land_mask, coords = {"lat": data.lat, "lon": lon_transform})
     land_mask = utility.transfer_xarray_lon_from180TO360(land_mask)
     return land_mask
@@ -307,3 +306,27 @@ def SR21_inversion(temp, q, tcwv, ps, ppm = 280):
 
     ps_eff = 0.869*ps
     return SR21(temp_eff, q, tcwv, ps_eff, theta=52.7, ppm=ppm)
+
+def lower_tropospheric_stability(T0,T700, ps):
+    '''Compute the Estimated Inversion Strength or LTS,
+    following Klein and Hartmann (1993)
+
+    Inputs: T0 is surface temp in Kelvin
+           T700 is air temperature at 700 hPa in Kelvin
+           ps is surface pressure in hPa
+
+    Output: EIS in Kelvin
+
+    EIS is a normalized measure of lower tropospheric stability acccounting for
+    temperature-dependence of the moist adiabat.
+    '''
+    # Lower Tropospheric Stability (theta700 - theta0)
+    LTS = T700*(1000/700)**kappa - T0*(1000/ps)**kappa
+    return LTS
+
+def calc_relhum(temp, q, ps):
+    w = q / (1-q)
+    vp = w * ps / (0.622 + w)
+
+    sat_vp = calc_vapor_pressure(temp)
+    return vp / sat_vp
