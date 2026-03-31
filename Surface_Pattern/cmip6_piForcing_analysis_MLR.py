@@ -179,10 +179,12 @@ T_mediated_data['ts'].mean('model').plot(ax=ax1[0, 0], transform=ccrs.PlateCarre
 T_mediated_data['TOA'].mean('model').plot(ax=ax1[1, 0], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', add_colorbar=False)
 (T_mediated_data['TOA'] - T_mediated_data['SFC']).mean('model').plot(ax=ax1[2, 0], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', add_colorbar=False)
 T_mediated_data['SFC'].mean('model').plot(ax=ax1[3, 0], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', add_colorbar=False)
-sst_sharp_data['ts'].mean('model').plot(ax=ax1[0, 1], transform=ccrs.PlateCarree(), vmin=-1, vmax=1, extend='both',cmap='RdBu_r', cbar_kwargs={'label':'ts ($\\mathrm{K/\\sigma}$)'})
+sst_sharp_data['ts'].mean('model').plot(ax=ax1[0, 1], transform=ccrs.PlateCarree(), vmin=-1, vmax=1, extend='both',cmap='RdBu_r', cbar_kwargs={'label':'ts ($\\mathrm{K/\\sigma}$)', 'pad':0.1})
 sst_sharp_data['TOA'].mean('model').plot(ax=ax1[1, 1], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', add_colorbar=False)# cbar_kwargs={'label':'TOA ($\\mathrm{W/m^2/\\sigma}$)'})
-(sst_sharp_data['TOA'] - sst_sharp_data['SFC']).mean('model').plot(ax=ax1[2, 1], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', cbar_kwargs={'label':'Energy Response ($\\mathrm{W/m^2/\\sigma}$)', 'shrink':1.5, 'aspect':30})
+cbar = (sst_sharp_data['TOA'] - sst_sharp_data['SFC']).mean('model').plot(ax=ax1[2, 1], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', add_colorbar=False)# cbar_kwargs={'label':'Energy Response ($\\mathrm{W/m^2/\\sigma}$)', 'shrink':1.5, 'aspect':30})
 sst_sharp_data['SFC'].mean('model').plot(ax=ax1[3, 1], transform=ccrs.PlateCarree(), vmin=-8, vmax=8, extend='both',cmap='RdBu_r', add_colorbar=False) #cbar_kwargs={'label':'ts ($\\mathrm{W/m^2/\\sigma}$)'})
+
+fig1.colorbar(cbar,ax=ax1[1:,:], label='Energy Response ($\\mathrm{W/m^2/\\sigma}$)', shrink=0.8, aspect=40)
 
 for i in range(4):
     ax1[i, 0].coastlines()
@@ -197,10 +199,10 @@ ax1[2,1].set_title('')
 ax1[3,0].set_title('')
 ax1[3,1].set_title('')
 
-ax1[0,0].set_ylabel('Surface Temperature')
-ax1[1,0].set_ylabel('TOA')
-ax1[2,0].set_ylabel('ATM')
-ax1[3,0].set_ylabel('SFC')
+ax1[0,0].set_ylabel('Surface Temperature', size=13)
+ax1[1,0].set_ylabel('TOA', size=13)
+ax1[2,0].set_ylabel('ATM', size=13)
+ax1[3,0].set_ylabel('SFC', size=13)
 
 ax1[0,0].set_yticks([])
 ax1[1,0].set_yticks([])
@@ -382,16 +384,16 @@ dHF_wind = SST_sharp_contribution(regressor_variables, dynamic, calc_anom=False)
 fig, ax = plt.subplots(2, 2, layout='constrained', figsize=(8, 5), subplot_kw={'projection':ccrs.Robinson(central_longitude=210)})
 
 sst_sharp_data['SFC_rad'].mean('model').plot(ax= ax[0,0], vmin=-8, vmax=8, cmap='RdBu_r', extend='both', transform=ccrs.PlateCarree(), add_colorbar=False)
-sst_sharp_data['SFC_rad'].quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[0,0], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['///', None], add_colorbar=False)
+sst_sharp_data['SFC_rad'].quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[0,0], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['..', None], add_colorbar=False)
 
 (-sst_sharp_data['hfls'] - sst_sharp_data['hfss']).mean('model').plot(ax=ax[0,1], vmin=-8, vmax=8, cmap='RdBu_r', extend='both', transform=ccrs.PlateCarree(), add_colorbar=False)
-(-sst_sharp_data['hfls'] - sst_sharp_data['hfss']).quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[0,1], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['///', None], add_colorbar=False)
+(-sst_sharp_data['hfls'] - sst_sharp_data['hfss']).quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[0,1], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['..', None], add_colorbar=False)
 
 (dHF_thermo).mean('model').plot(ax=ax[1,0], vmin=-8, vmax=8, cmap='RdBu_r', extend='both', transform=ccrs.PlateCarree(), add_colorbar=False)
-(dHF_thermo).quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[1,0], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['///', None], add_colorbar=False)
+(dHF_thermo).quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[1,0], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['..', None], add_colorbar=False)
 
 (dHF_wind).mean('model').plot(ax=ax[1,1], vmin=-8, vmax=8, cmap='RdBu_r', extend='both', transform=ccrs.PlateCarree(), cbar_kwargs={'ax':ax[:,:], 'label':'Turbulent Heat Flux Sensitivity to SST# ($\\mathrm{W/m^2/\\sigma}$)'})
-(dHF_wind).quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[1,1], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['///', None], add_colorbar=False)
+(dHF_wind).quantile([2/7, 5/7],dim='model').prod('quantile').plot.contourf(ax=ax[1,1], levels=[-1000, 0], colors='none', transform=ccrs.PlateCarree(), hatches=['..', None], add_colorbar=False)
 
 
 ax[0,0].set_title('Radiative')
@@ -414,10 +416,10 @@ fig, ax = plt.subplots(nrows=3, figsize=(6, 6), layout='constrained')
 
 for j in range(3):
     for i in range(6):
-        ax[j].scatter(8*[i], GM_kernel.isel({'component':i, 'loc':j}), edgecolors=range(8), facecolors='none',cmap='Dark2')
+        ax[j].scatter(8*[i] + 0.1*np.random.rand(8), GM_kernel.isel({'component':i, 'loc':j}), c=range(8), cmap='Dark2')
         print(GM_kernel.isel({'component':i, 'loc':j}).compute())
     # Add radiative total in
-    ax[j].scatter(8*[6], GM_kernel.isel({'component':7, 'loc':j}), edgecolors=range(8), facecolors='none',cmap='Dark2')
+    ax[j].scatter(8*[6] + 0.1*np.random.rand(8), GM_kernel.isel({'component':7, 'loc':j}), c=range(8),cmap='Dark2')
     ax[j].set_xticklabels([])
     ax[j].set_xlim([-0.5, 10.5])
     ax[j].set_ylim([-0.4, 0.2])
@@ -427,24 +429,23 @@ for j in range(3):
 mods = ['CanESM5', 'CESM2', 'CNRM-CM6-1', 'HadGEM3-GC31-LL', 'IPSL-CM6A-LR', 'MIROC6', 'MRI-ESM2-0', 'TaiESM1']
 cmap = plt.cm.Dark2
 for k in range(8):
-    ax[1].scatter([], [], edgecolor=cmap(k), facecolor='none',
-                  label=f"{mods[k]}")
+    ax[1].scatter([], [], c=cmap(k), cmap='Dark2',label=f"{mods[k]}")
 
 ax[0].set_title('Global-mean energy budget sensitivity to SST# ($\\mathrm{W/m^2/\\sigma}$)')
 ax[0].set_ylabel('TOA')
 ax[1].set_ylabel('ATM')
 ax[2].set_ylabel('SFC')
-ax[1].scatter(8*[7], glob_mean(sst_sharp_data['hfls']), edgecolors=range(8), facecolors='none',cmap='Dark2')
-ax[1].scatter(8*[8], glob_mean(sst_sharp_data['hfss']), edgecolors=range(8), facecolors='none',cmap='Dark2')
+ax[1].scatter(8*[7] + 0.1*np.random.rand(8), glob_mean(sst_sharp_data['hfls']), c=range(8),cmap='Dark2')
+ax[1].scatter(8*[8] + 0.1*np.random.rand(8), glob_mean(sst_sharp_data['hfss']), c=range(8),cmap='Dark2')
 
-ax[1].scatter(8*[9], -glob_mean(dHF_thermo), edgecolors=range(8), facecolors='none',cmap='Dark2')
-ax[1].scatter(8*[10], -glob_mean(dHF_wind), edgecolors=range(8), facecolors='none',cmap='Dark2')
+ax[1].scatter(8*[9] + 0.1*np.random.rand(8), -glob_mean(dHF_thermo), c=range(8),cmap='Dark2')
+ax[1].scatter(8*[10] + 0.1*np.random.rand(8), -glob_mean(dHF_wind), c=range(8),cmap='Dark2')
 
-ax[2].scatter(8*[7], -glob_mean(sst_sharp_data['hfls']), edgecolors=range(8), facecolors='none', cmap='Dark2')
-ax[2].scatter(8*[8], -glob_mean(sst_sharp_data['hfss']), edgecolors=range(8), facecolors='none', cmap='Dark2')
+ax[2].scatter(8*[7] + 0.1*np.random.rand(8), -glob_mean(sst_sharp_data['hfls']), c=range(8), cmap='Dark2')
+ax[2].scatter(8*[8] + 0.1*np.random.rand(8), -glob_mean(sst_sharp_data['hfss']), c=range(8), cmap='Dark2')
 
-ax[2].scatter(8*[9], glob_mean(dHF_thermo), edgecolors=range(8), facecolors='none',cmap='Dark2')
-ax[1].scatter(8*[10], glob_mean(dHF_wind), edgecolors=range(8), facecolors='none',cmap='Dark2')
+ax[2].scatter(8*[9] + 0.1*np.random.rand(8), glob_mean(dHF_thermo), c=range(8),cmap='Dark2')
+ax[1].scatter(8*[10] + 0.1*np.random.rand(8), glob_mean(dHF_wind), c=range(8),cmap='Dark2')
 
 fig.legend(loc='center', bbox_to_anchor=(0.5, -0.05), ncols=4)
 ax[2].set_xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], ['Planck', 'LR', 'RH', 'Albedo', 'SW CLD', 'LW CLD', 'RAD TOTAL','LHF', 'SHF', 'Turb Thermo', 'Turb Dyn'])
