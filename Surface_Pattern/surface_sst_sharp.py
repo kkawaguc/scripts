@@ -1,12 +1,14 @@
 import marimo
 
-__generated_with = "0.14.17"
+__generated_with = "0.19.4"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""# This notebook calculates fluctuations in the surface energy budget associated with changes in the equatorial Pacific zonal SST gradient""")
+    mo.md(r"""
+    # This notebook calculates fluctuations in the surface energy budget associated with changes in the equatorial Pacific zonal SST gradient
+    """)
     return
 
 
@@ -19,7 +21,7 @@ def importpackages():
     import xskillscore as xs
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
-    from Surface_Pattern.CMIP6_analysis_functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
+    from CMIP6_analysis_functions import calc_land_mask, calc_fdbk, calc_dHF, facetplot
     import pandas as pd
     import xrscipy
     return (
@@ -40,9 +42,8 @@ def importpackages():
 @app.cell
 def _(calc_land_mask, np, xr):
     #Replace here with amip-piForcing or historical simulations
-    base_data = xr.open_dataset("/gws/nopw/j04/csgap/kkawaguchi/surface_data/amip-piForcing.nc", chunks={'lat':36, 'lon':36})
-
-    base_data = base_data.rolling(dim={'time':11}, center=True).mean().dropna(dim='time', how='all').compute()
+    base_data = xr.open_dataset("/gws/ssde/j25a/csgap/kkawaguchi/surface_data/amip_piForcing_new_monthly.nc", chunks={'lat':12, 'lon':12})
+    base_data.drop_vars(['ta', 'hus'])
 
     base_data['TOA'] = -(base_data['rlut'] + base_data['rsut'])
     base_data['TOA_cs'] = -(base_data['rlutcs'] + base_data['rsutcs'])
@@ -57,21 +58,28 @@ def _(calc_land_mask, np, xr):
     base_data['SFC_SWCRE'] = base_data['rsds'] - base_data['rsdscs'] - base_data['rsus'] + base_data['rsuscs']
     base_data['SFC_LWCRE'] = base_data['rlds'] - base_data['rldscs']
 
+
     #Regrid to calculate the land mask
     land_mask = calc_land_mask(base_data)
 
     #Calculate data over just the ocean
     ocean_flux = base_data[["rsds", "rlds", "rsus", "rlus", "hfss", "hfls","uas", "vas", "ps", "tas", "ts", "huss"]]
+
     ocean_flux = xr.where(land_mask == True, ocean_flux, np.nan)
     ocean_flux_climo = ocean_flux.mean("time")
-
     ocean_flux, ocean_flux_climo = xr.broadcast(ocean_flux, ocean_flux_climo)
     return base_data, ocean_flux, ocean_flux_climo
 
 
 @app.cell
-def _(base_data):
-    base_data
+def _():
+    return
+
+
+@app.cell
+def _(base_data, plt):
+    base_data['hfss'].mean('time').plot(col='model', col_wrap=4)
+    plt.show()
     return
 
 
@@ -85,7 +93,6 @@ def _(T_series, base_data, calc_fdbk):
 @app.cell
 def _(base_data, sst_idx, xs):
     flux_response = xs.linslope(sst_idx, base_data)
-
     return (flux_response,)
 
 
@@ -122,7 +129,7 @@ def _(ccrs, flux_response, plt):
 
     ax1[0].set_title('TOA')
     ax1[1].set_title('SFC')
-    ax1[2].set_title('ATM Heat Convergence')
+    ax1[2].set_title('ATM Heat Divergence')
 
     for i in range(3):
         ax1[i].coastlines()
@@ -222,7 +229,8 @@ def _(ccrs, flux_response, plt):
 
 @app.cell
 def _(TOA_fdbk, plt, weights):
-    TOA_fdbk.weighted(weights).mean(('lat', 'lon')).plot.line(x='time')
+    TOA_fdbk.weighted(weights).mean(('lat', 'lon', 'model')).plot.line()
+    plt.fill_between(TOA_fdbk.time,TOA_fdbk.weighted(weights).mean(('lat', 'lon')).min('model'), TOA_fdbk.weighted(weights).mean(('lat', 'lon')).max('model'), alpha=0.3)
     plt.ylim([-3.5, 0.5])
     plt.title('TOA Fdbk ($\\mathrm{W/m^2/K}$)')
     plt.show()
@@ -337,7 +345,7 @@ def _(Fueglistaler_idx_norm, Fueglistaler_idx_raw, Watanabe_idx_raw, mo):
 
 @app.cell
 def _(T_series, sst_idx, xs):
-    xs.linslope(sst_idx, T_series)
+    xs.linslope(sst_idx, T_series).compute()
     return
 
 
@@ -412,7 +420,7 @@ def _(ocean_slope, weights_broadcast, xs):
     return
 
 
-@app.cell
+@app.cell(disabled=True)
 def _(calc_dHF, ocean_flux, ocean_flux_climo, pd, xr):
     dHF_wind = calc_dHF(ocean_flux, ocean_flux_climo, climo_variables = ['ts', 'tas', 'huss', 'ps'])
     dHF_temp = calc_dHF(ocean_flux, ocean_flux_climo, climo_variables = ['uas', 'vas', 'ps'])
@@ -431,20 +439,32 @@ def _(dHF, sst_idx, xs):
 
 @app.cell
 def _(dHF_slope, facetplot):
-    facetplot(dHF_slope['ql'], 'model', 'Varied Fields', vmin=-4, vmax=4, extend='both',cmap='RdBu_r', cbar_kwargs={'shrink':0.6})
+    facetplot(dHF_slope['ql']+dHF_slope['qh'], 'model', 'Varied Fields', vmin=-4, vmax=4, extend='both',cmap='RdBu_r', cbar_kwargs={'shrink':0.6})
+    return
+
+
+@app.cell
+def _(dHF_slope):
+    dHF_slope['ql']+dHF_slope['qh']
     return
 
 
 @app.cell
 def _(dHF_slope, plt):
-    dHF_slope['ql'].plot(col='Varied Fields', row='model', figsize=(12, 8), vmin=-5, vmax=5, cmap='RdBu_r')
+    dHF_slope['ql'].plot(col='Varied Fields', row='model', figsize=(12, 16), vmin=-5, vmax=5, cmap='RdBu_r')
     plt.show()
     return
 
 
 @app.cell
 def _(dHF_slope, facetplot):
-    facetplot(dHF_slope['qh'], 'model', 'Varied Fields', vmin=-1, vmax=1, cmap='RdBu_r')
+    facetplot(dHF_slope['ql']+dHF_slope['qh'], 'model', 'Varied Fields', vmin=-5, vmax=5, cmap='RdBu_r')
+    return
+
+
+@app.cell
+def _(dHF_slope, facetplot):
+    facetplot(dHF_slope['taux'], 'model', 'Varied Fields', vmin=-2.5e-3, vmax=2.5e-3, cmap='RdBu_r')
     return
 
 

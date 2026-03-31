@@ -293,14 +293,18 @@ global_mean_bar_plot(SW_CN21_fdbk + LW_CN21_fdbk)
 spatial_plot(SW_CN21_fdbk, LW_CN21_fdbk, name='dtheta_dCCF')
 
 # %%
-ts_theta = glob_mean(SW_CN21_fdbk.sel({'var':'ts'}) + LW_CN21_fdbk.sel({'var':'ts'}))
-eis_theta = glob_mean(SW_CN21_fdbk.sel({'var':'eislts'}) + LW_CN21_fdbk.sel({'var':'eislts'}))/glob_EIS.rename({'atmos_mod':'model_nr'})
+ts_theta = glob_mean(SW_coeffs_physical.sum(('lat_in', 'lon_in')).sel({'var':'ts'}) + LW_coeffs_physical.sum(('lat_in', 'lon_in')).sel({'var':'ts'}))
+eis_theta = glob_mean(SW_coeffs_physical.sum(('lat_in', 'lon_in')).sel({'var':'eislts'}) + LW_coeffs_physical.sum(('lat_in', 'lon_in')).sel({'var':'eislts'}))
 
-plt.scatter(ts_theta, eis_theta, c=glob_EIS)
+ts_theta.to_netcdf('ts_theta.nc')
+eis_theta.to_netcdf('eis_theta.nc')
+glob_EIS.to_netcdf('glob_EIS.nc')
+
+plt.scatter(ts_theta, eis_theta)
 plt.colorbar(label='dEIS/dT (K/K)')
 plt.ylabel('EIS $\\Theta$ ($\mathrm{W/m^2/K}$)')
 plt.xlabel('Tsfc $\\Theta$ ($\mathrm{W/m^2/K}$)')
-plt.savefig('global_theta.png')
+plt.savefig('global_theta_unif.png')
 # %%
 
 # Calculate assuming mean theta with dCCF
@@ -377,3 +381,12 @@ SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
 LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
 
 global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_MRI-ESM2-0')
+# %%
+SW_dCCF_fdbk = (SW_coeffs_physical.sel({'model_nr':'MRI-CGCM3'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+LW_dCCF_fdbk = (LW_coeffs_physical.sel({'model_nr':'MRI-CGCM3'}) * model_fdbks_CCF.rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
+
+SW_dCCF_fdbk_subset = SW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+LW_dCCF_fdbk_subset = LW_dCCF_fdbk.sel({'atmos_mod':pattern_models})
+
+global_mean_plot(SW_dCCF_fdbk, LW_dCCF_fdbk, SW_dCCF_fdbk_subset, LW_dCCF_fdbk_subset, var =['ts', 'eislts', 'hur700', 'utrh', 'wap500'], name='dCCF_MRI-CGCM3')
+# %%

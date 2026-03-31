@@ -51,8 +51,8 @@ def tcwv_est(dpt, lsm):
     Returns:
         tcwv_est: estimate of the tcwv'''
     land = xr.where(lsm > 0.5, True, False)
-    land_tcwv = np.exp(-15.6+0.06579*dpt)
-    ocean_tcwv = np.exp(-14.3+0.061*dpt)
+    land_tcwv = np.exp(-15.6+0.0656*dpt)
+    ocean_tcwv = np.exp(-14.3+0.0605*dpt)
     return xr.where(land, land_tcwv, ocean_tcwv)
 
 def calc_specific_humidity(ps, dpt):
@@ -95,8 +95,8 @@ def DO98_UM75(temp, cf, pw):
         pw - column precipitable water (kg/m^2): xarray dataarray
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
-    L_clr = 36.07 + 126.3*(temp/273.16)**6 + 98.02*np.sqrt(pw/25)
-    L = (1-0.6436*cf)*L_clr + 0.6436*cf*sigma*temp**4
+    L_clr = 23.8 + 130*(temp/273.16)**6 + 96.6*np.sqrt(pw/25)
+    L = (1-0.721*cf)*L_clr + 0.721*cf*sigma*temp**4
     return L
 
 def C14(temp, RH, cf):
@@ -111,7 +111,7 @@ def C14(temp, RH, cf):
         cf - Cloud fraction (0-1): xarray dataarray
     Returns:
         L - estimated downwelling longwave (W/m^2)'''
-    L = (-0.05835 + 0.002448*temp + 0.2003*RH + 0.1068*cf)* sigma * temp ** 4
+    L = (-0.0230 + 0.00230*temp + 0.195*RH + 0.126*cf)* sigma * temp ** 4
     return L
 
 def CN14(temp, vp, cf):
@@ -126,12 +126,9 @@ def CN14(temp, vp, cf):
         cf - Cloud fraction (0-1): xarray dataarray
     Returns:
         L - estimated downwelling longwave (W/m^2)'''    
-    #eps_clr = (1-6.437*np.exp(-temp/78.71)-0.2826*np.exp(-vp/1.802e-2))
-    #L_clr = eps_clr * sigma * temp**4
-    #L = L_clr * (1 + 0.1214*cf**3.388)
-    eps_clr = (1-0.163*np.exp(-temp/763700)-0.1504*np.exp(-vp/2197))
+    eps_clr = (1-1.98*np.exp(-temp/149)-0.0307*np.exp(-vp/4.26))
     L_clr = eps_clr * sigma * temp**4
-    L = L_clr * (1 + 0.2149*cf**0.9609)
+    L = L_clr * (1 + 0.316*cf**0.851)
     return L
 
 def deK20(temp, sw_clr, RH):
@@ -148,8 +145,8 @@ def deK20(temp, sw_clr, RH):
         L - estimated downwelling longwave (W/m^2)'''
     day = xr.where(sw_clr < 50, True, False)
 
-    clr_branch = -126.1 + 114.5*RH + 0.9687*sigma*temp**4
-    cloud_branch = -99.74 + 86.73*RH + 0.9706*sigma*temp**4
+    clr_branch = -86.8 + 100*RH + 0.889*sigma*temp**4
+    cloud_branch = -155 + 151*RH + 0.974*sigma*temp**4
     
     day_L = xr.where(RH < 0.6, clr_branch, cloud_branch)
     night_L = xr.where(RH < 0.8, clr_branch, cloud_branch)
@@ -214,8 +211,7 @@ def SR21_BE23(temp, dpt, tcwv, ps, RH):
         L - estimated clear-sky downwelling longwave (W/m^2)'''
     L_clr = SR21(temp, dpt, tcwv, ps, theta=40.3, ppm=400)
     e_sat = calc_vapor_pressure(temp)
-    #cloud_correction = (0.9364 + 1.115e-5*e_sat)*RH**(0.1392 - 1.190e-5*e_sat)
-    cloud_correction = (0.9142 - 1.457e-4*e_sat)*RH**(1.947 + 1.18e-4*e_sat)
+    cloud_correction = (0.884 - 0.0093*e_sat)*RH**(1.64 + 0.0541*e_sat)
     L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* temp **4
     return L
 
@@ -235,9 +231,9 @@ def B32_BE23(temp, dpt, RH):
     Returns:
         L - estimated clear-sky downwelling longwave (W/m^2)'''
     vp = calc_vapor_pressure(dpt)
-    L_clr = (0.5996 + 0.005174*np.sqrt(vp))*sigma*temp**4
+    L_clr = (0.579 + 0.00594*np.sqrt(vp))*sigma*temp**4
     e_sat = calc_vapor_pressure(temp)
-    cloud_correction = (1.013 - 0.0001594*e_sat)*RH**(2.433 + 0.0001635*e_sat)
+    cloud_correction = (1.11 - 0.0281*e_sat)*RH**(2.70 -0.0199*e_sat)
     L = (1 - cloud_correction)*L_clr + cloud_correction*sigma* temp **4
     return L
 
@@ -251,7 +247,7 @@ def SR21_inversion(temp, dpt, tcwv, ps, ppm = 400):
         vars: variables needed to calculate the clear-sky DLR
     Returns:
         adjusted_SR21: estimated DLR clear-sky'''
-    temp_eff = xr.where(temp >= 270, temp, 0.6719*temp + 270 * (1-0.6719))
+    temp_eff = xr.where(temp >= 270, temp, 0.823*temp + 270 * (1-0.823))
 
     vp = calc_vapor_pressure(dpt)
     sat_vap = calc_vapor_pressure(temp)
@@ -261,19 +257,19 @@ def SR21_inversion(temp, dpt, tcwv, ps, ppm = 400):
     vp_eff = xr.where(temp >= 270, vp, rh * sat_vap_eff)
     dpt_eff = xr.where(temp >= 270, dpt, vp2dpt(vp_eff))
 
-    ps_eff = 0.7592*ps
+    ps_eff = 0.869*ps
     return SR21(temp_eff, dpt_eff, tcwv, ps_eff, theta=52.7, ppm=ppm)
 
 def calc_cloud_height(temp, RH):
     '''Calculate the cloud height, assuming the atmospheric lapse rate is
-    equal to the dry adiabatic lapse rate of 9.8 K/km. Calculated from the
+    4.6 K/km. Calculated from the
     Clausius-Clapeyron saturation height.
     Inputs:
         temp: 2m temperature (K)
         RH: near surface relative humidity (0-1)
     Returns:
         cb: estimated cloud base height (m)'''
-    Gamma = 6.5e-3  #Dry adiabatic lapse rate
+    Gamma = 4.6e-3  #Lapse rate
     M_w = 1.8016e-2 #Molar mass of water
     L_v = 2.5e6     #Latent heat of vaporisation
     R = 8.3145      #Ideal gas constant
@@ -314,118 +310,20 @@ def KSR24(temp, dpt, ps, cf, lsm, ppm=400, alpha=1):
     clear_sky = SR21_inversion(temp, dpt, tcwv, ps, ppm=ppm)
 
     RH = calc_vapor_pressure(dpt)/calc_vapor_pressure(temp)
-    cb = lcl(ps, temp, rh=RH)
+    cb = - np.log(RH) * (R * temp ** 2)/(L_v*M_w*4.6e-3)
 
     cwv_fraction = tcwv_adjustment(temp, dpt, ps, tcwv, cb)
     eff_cwv = tcwv*cwv_fraction
 
-    below_cloud = SR21(temp, dpt, eff_cwv, 0.7592*ps, theta=52.7, ppm=ppm)
+    below_cloud = SR21(temp, dpt, eff_cwv, 0.869*ps, theta=52.7, ppm=ppm)
     below_cloud_emissivity = below_cloud/(sigma * temp ** 4)
 
-    cloud_temp  = temp - 9.8e-3*cb
+    cloud_temp  = temp - 4.6e-3*cb
 
-    #land_cld_emiss = 0.9389 - 1.113e-4*cb
-    #ocean_cld_emiss = 1.011 - 1.745e-4*cb
-
-    #cld_emiss = land_cld_emiss * lsm + ocean_cld_emiss * (1-lsm)
-    #cld_emiss = xr.where(cld_emiss < 0, 0, cld_emiss)
-
-    #cld_emiss = 0.8705 * cld_emiss
-    cld_emiss = 0.894 * xr.where(cb >= 9291, 0.1165, -8.88e-5*cb + 0.1165+8.88e-5*9291)
+    cld_emiss = 0.889*np.exp(-cb/3970)+ 0.0212
 
     cloud_layer = (1-below_cloud_emissivity) * sigma * cld_emiss * cloud_temp**4
     return (1-cf) * clear_sky + cf * (below_cloud + cloud_layer)
-
-def lcl(p,T,rh=None,rhl=None,rhs=None,return_ldl=False,return_min_lcl_ldl=False):
-   #Adapted from Romps (2017) to include xarray dataarrays in the input
-   import math
-   import scipy.special
-
-   # Parameters
-   Ttrip = 273.16     # K
-   ptrip = 611.65     # Pa
-   E0v   = 2.3740e6   # J/kg
-   E0s   = 0.3337e6   # J/kg
-   ggr   = 9.81       # m/s^2
-   rgasa = 287.04     # J/kg/K 
-   rgasv = 461        # J/kg/K 
-   cva   = 719        # J/kg/K
-   cvv   = 1418       # J/kg/K 
-   cvl   = 4119       # J/kg/K 
-   cvs   = 1861       # J/kg/K 
-   cpa   = cva + rgasa
-   cpv   = cvv + rgasv
-
-   # The saturation vapor pressure over liquid water
-   def pvstarl(T):
-      return ptrip * (T/Ttrip)**((cpv-cvl)/rgasv) * \
-         np.exp( (E0v - (cvv-cvl)*Ttrip) / rgasv * (1/Ttrip - 1/T) )
-   
-   # The saturation vapor pressure over solid ice
-   def pvstars(T):
-      return ptrip * (T/Ttrip)**((cpv-cvs)/rgasv) * \
-         np.exp( (E0v + E0s - (cvv-cvs)*Ttrip) / rgasv * (1/Ttrip - 1/T) )
-
-   # Calculate pv from rh, rhl, or rhs
-   rh_counter = 0
-   if rh  is not None:
-      rh_counter = rh_counter + 1
-   if rhl is not None:
-      rh_counter = rh_counter + 1
-   if rhs is not None:
-      rh_counter = rh_counter + 1
-   if rh_counter != 1:
-      print(rh_counter)
-      exit('Error in lcl: Exactly one of rh, rhl, and rhs must be specified')
-   if rh is not None:
-      # The variable rh is assumed to be 
-      # with respect to liquid if T > Ttrip and 
-      # with respect to solid if T < Ttrip
-      pv = xr.where(T > Ttrip, rh * pvstarl(T), rh * pvstars(T))
-      rhl = pv / pvstarl(T)
-      rhs = pv / pvstars(T)
-   elif rhl is not None:
-      pv = rhl * pvstarl(T)
-      rhs = pv / pvstars(T)
-      if T > Ttrip:
-         rh = rhl
-      else:
-         rh = rhs
-   elif rhs is not None:
-      pv = rhs * pvstars(T)
-      rhl = pv / pvstarl(T)
-      if T > Ttrip:
-         rh = rhl
-      else:
-         rh = rhs
-   #if pv > p:
-   #   return NA
-
-   # Calculate lcl_liquid and lcl_solid
-   qv = rgasa*pv / (rgasv*p + (rgasa-rgasv)*pv)
-   rgasm = (1-qv)*rgasa + qv*rgasv
-   cpm = (1-qv)*cpa + qv*cpv
-   aL = -(cpv-cvl)/rgasv + cpm/rgasm
-   bL = -(E0v-(cvv-cvl)*Ttrip)/(rgasv*T)
-   cL = pv/pvstarl(T)*np.exp(-(E0v-(cvv-cvl)*Ttrip)/(rgasv*T))
-   aS = -(cpv-cvs)/rgasv + cpm/rgasm
-   bS = -(E0v+E0s-(cvv-cvs)*Ttrip)/(rgasv*T)
-   cS = pv/pvstars(T)*np.exp(-(E0v+E0s-(cvv-cvs)*Ttrip)/(rgasv*T))
-   lcl = cpm*T/ggr*( 1 - \
-      bL/(aL*scipy.special.lambertw(bL/aL*cL**(1/aL),-1).real) )
-   ldl = cpm*T/ggr*( 1 - \
-      bS/(aS*scipy.special.lambertw(bS/aS*cS**(1/aS),-1).real) )
-
-   # Return either lcl or ldl
-   if return_ldl and return_min_lcl_ldl:
-      exit('return_ldl and return_min_lcl_ldl cannot both be true')
-   elif return_ldl:
-      return ldl
-   elif return_min_lcl_ldl:
-      return min(lcl,ldl)
-   else:
-      return xr.where(rh == 0, cpm*T/ggr, lcl)
-
 
 def round_to_sig_figs(num, sig_figs):
     if num != 0:
