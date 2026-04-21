@@ -274,6 +274,20 @@ glob_EIS = glob_mean(EIS_ocean, bnds=50)
 
 # %%
 
+local_theta = glob_mean((SW_coeffs_physical.sel({'var':'ts'}) * model_fdbks_CCF.sel({'var':'ts'}).rename({'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))).compute()
+global_theta = glob_mean(SW_coeffs_physical.sel({'var':'ts'}).sum(('lat_in', 'lon_in')).mean(('lat_out', 'lon_out')) * model_fdbks_CCF.sel({'var':'ts'})).compute()
+
+# %%
+
+plt.scatter(local_theta, global_theta, s=10)
+plt.xlabel('Cloud feedback from local $\\Theta_T$')
+plt.ylabel('Cloud feedback from global $\\Theta_T$')
+plt.ylim([-1.2, 1.5])
+plt.xlim([-1.2, 1.5])
+plt.plot((-2, 2), (-2, 2))
+
+# %%
+
 # Initial testing: 
 
 SW_CN21_fdbk = (SW_coeffs_physical * model_fdbks_CCF.rename({'atmos_mod':'model_nr', 'lat':'lat_in', 'lon':'lon_in'})).sum(('lat_in', 'lon_in'))
